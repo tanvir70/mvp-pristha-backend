@@ -1,6 +1,6 @@
-# Prokash Digital: Coding Guidelines & Architectural Standards
+# Pristha Digital: Coding Guidelines & Architectural Standards
 
-This document defines the coding standards, patterns, and architectural rules for the **Prokash Digital (Prishtha)** backend. All developers must follow these guidelines to maintain package modularity, security, and scalability.
+This document defines the coding standards, patterns, and architectural rules for the **Pristha Digital (Prishtha)** backend. All developers must follow these guidelines to maintain package modularity, security, and scalability.
 
 ---
 

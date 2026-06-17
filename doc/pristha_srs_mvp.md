@@ -1,6 +1,6 @@
-# Software Requirements Specification (SRS) - Prokash Digital MVP
+# Software Requirements Specification (SRS) - Pristha Digital MVP
 
-This document specifies the comprehensive functional and non-functional requirements for the first MVP of **Prokash Digital**, focusing on the individual writer ecosystem, flexible social publishing, and micro-payment chapter unlocks.
+This document specifies the comprehensive functional and non-functional requirements for the first MVP of **Pristha Digital**, focusing on the individual writer ecosystem, flexible social publishing, and micro-payment chapter unlocks.
 
 ---
 
@@ -18,7 +18,7 @@ The system must support the following roles:
 ## 2. Comprehensive Bounded Module Functional Requirements
 
 ```
-                                PROKASH DIGITAL MVP
+                                PRISTHA DIGITAL MVP
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  IDENTITY MODULE                                                             │
 │  - ID-FR-01: Phone Registration    - ID-FR-06: Author Profile Activation     │

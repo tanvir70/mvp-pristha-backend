@@ -1,5 +1,5 @@
 
-<h2 class="sr-only">Prokash Digital backend capabilities — filterable feature list across 10 domains</h2>
+<h2 class="sr-only">Pristha Digital backend capabilities — filterable feature list across 10 domains</h2>
 <style>
 .pill{display:inline-block;font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;cursor:pointer;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);background:transparent;transition:background .15s,color .15s;font-family:var(--font-sans)}
 .pill.on{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-primary)}
@@ -147,7 +147,7 @@ function render() {
     var rows = '';
     for (var j = 0; j < items.length; j++) {
       var f = items[j];
-      var q = 'Deep dive on Prokash backend: ' + f.title + ' — implementation detail, code pattern, and how it fits the Spring Boot 4 Java 25 stack';
+      var q = 'Deep dive on Pristha backend: ' + f.title + ' — implementation detail, code pattern, and how it fits the Spring Boot 4 Java 25 stack';
       rows += '<div class="feat-item" onclick="sendPrompt(' + JSON.stringify(q) + ')">'
         + '<p class="feat-title">' + f.title + '</p>'
         + '<p class="feat-desc">' + f.desc + '</p>'

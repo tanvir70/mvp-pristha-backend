@@ -1,6 +1,6 @@
-# Prokash Digital: MVP Feature List (Writer-First Focus)
+# Pristha Digital: MVP Feature List (Writer-First Focus)
 
-This document outlines the scope of the first Minimal Viable Product (MVP) for **Prokash Digital**, focusing primarily on individual writers ("Sudo-Writers") paywalling their content and readers unlocking chapters.
+This document outlines the scope of the first Minimal Viable Product (MVP) for **Pristha Digital**, focusing primarily on individual writers ("Sudo-Writers") paywalling their content and readers unlocking chapters.
 
 ---
 
@@ -55,7 +55,7 @@ Controls the delivery of reading content, page-by-page loading, and DRM protecti
 ### D. Billing Module (`billing`)
 Manages transactions, payment processing, and virtual wallets.
 
-* **Prokash Wallet**:
+* **Pristha Wallet**:
   - In-app wallet where readers load credits (e.g., loading 100 BDT or 500 BDT).
   - Mock **SSLCommerz** checkout flow to simulate loading wallet credits.
 * **One-Tap Unlock**:
