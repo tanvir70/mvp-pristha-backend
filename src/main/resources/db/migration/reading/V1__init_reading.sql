@@ -1,0 +1,13 @@
+CREATE SCHEMA IF NOT EXISTS reading;
+
+CREATE TABLE reading.reading_progress (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    post_id BIGINT NOT NULL,
+    scroll_position INT NOT NULL DEFAULT 0,
+    progress_percent SMALLINT NOT NULL DEFAULT 0,
+    last_read_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    UNIQUE (user_id, post_id)
+);
