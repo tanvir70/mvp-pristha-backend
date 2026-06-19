@@ -44,7 +44,7 @@ class IdentityServiceImpl implements IdentityService {
             throw new IllegalArgumentException("Invalid OTP code");
         }
 
-        user.setStatus(UserStatus.ACTIVE);
+        user.setStatus(UserStatus.VERIFIED);
         User savedUser = userRepository.save(user);
         return mapToResponseDto(savedUser);
     }

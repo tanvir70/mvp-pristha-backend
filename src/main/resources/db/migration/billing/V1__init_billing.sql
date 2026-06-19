@@ -1,0 +1,38 @@
+CREATE SCHEMA IF NOT EXISTS billing;
+
+CREATE TABLE billing.wallets (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL UNIQUE,
+    balance DECIMAL(12, 2) NOT NULL DEFAULT 0,
+    currency CHAR(3) NOT NULL DEFAULT 'BDT',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE billing.payment_transactions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    post_id BIGINT NOT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    gateway VARCHAR(30) NOT NULL DEFAULT 'SSLCOMMERZ',
+    gateway_txn_id VARCHAR(120) UNIQUE,
+    idempotency_key VARCHAR(64) NOT NULL UNIQUE,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE billing.content_unlocks (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    post_id BIGINT NOT NULL,
+    payment_transaction_id BIGINT NOT NULL UNIQUE REFERENCES billing.payment_transactions(id),
+    unlocked_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    UNIQUE (user_id, post_id)
+);
+
+CREATE INDEX idx_content_unlocks_user_post ON billing.content_unlocks(user_id, post_id);
