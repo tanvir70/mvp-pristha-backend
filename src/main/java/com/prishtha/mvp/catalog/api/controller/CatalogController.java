@@ -23,10 +23,11 @@ public class CatalogController {
     @GetMapping
     public Page<PostSummaryResponseDto> getPublishedPosts(
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) String tag,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return catalogService.getPublishedPosts(q, pageable);
+        return catalogService.getPublishedPosts(q, tag, pageable);
     }
 
     @GetMapping("/{slug}")

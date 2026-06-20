@@ -1,6 +1,7 @@
 package com.prishtha.mvp.catalog.api.controller;
 
 import com.prishtha.mvp.catalog.api.contract.AuthorPostService;
+import com.prishtha.mvp.catalog.api.dto.request.AssignPostTagsRequestDto;
 import com.prishtha.mvp.catalog.api.dto.request.AuthorPostUpsertRequestDto;
 import com.prishtha.mvp.catalog.api.dto.response.AuthorPostResponseDto;
 import lombok.RequiredArgsConstructor;
@@ -74,5 +75,13 @@ public class AuthorPostController {
     public ResponseEntity<AuthorPostResponseDto> unpublishPost(
             @RequestParam Long authorProfileId, @PathVariable Long postId) {
         return ResponseEntity.ok(authorPostService.unpublishPost(authorProfileId, postId));
+    }
+
+    @PutMapping("/{postId}/tags")
+    public ResponseEntity<AuthorPostResponseDto> assignTags(
+            @RequestParam Long authorProfileId,
+            @PathVariable Long postId,
+            @RequestBody AssignPostTagsRequestDto requestDto) {
+        return ResponseEntity.ok(authorPostService.assignTags(authorProfileId, postId, requestDto));
     }
 }

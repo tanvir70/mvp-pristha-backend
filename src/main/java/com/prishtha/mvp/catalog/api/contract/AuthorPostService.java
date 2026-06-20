@@ -1,6 +1,7 @@
 package com.prishtha.mvp.catalog.api.contract;
 
 import com.prishtha.mvp.catalog.api.dto.request.AuthorPostUpsertRequestDto;
+import com.prishtha.mvp.catalog.api.dto.request.AssignPostTagsRequestDto;
 import com.prishtha.mvp.catalog.api.dto.response.AuthorPostResponseDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,4 +22,6 @@ public interface AuthorPostService {
     AuthorPostResponseDto publishPost(Long authorProfileId, Long postId);
 
     AuthorPostResponseDto unpublishPost(Long authorProfileId, Long postId);
+
+    AuthorPostResponseDto assignTags(Long authorProfileId, Long postId, AssignPostTagsRequestDto requestDto);
 }

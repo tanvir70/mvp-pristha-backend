@@ -1,14 +1,23 @@
 package com.prishtha.mvp.catalog.internal.service;
 
 import com.prishtha.mvp.catalog.api.contract.AuthorPostService;
+import com.prishtha.mvp.catalog.api.dto.request.AssignPostTagsRequestDto;
 import com.prishtha.mvp.catalog.api.dto.request.AuthorPostUpsertRequestDto;
 import com.prishtha.mvp.catalog.api.dto.response.AuthorPostResponseDto;
 import com.prishtha.mvp.catalog.internal.entity.Post;
+import com.prishtha.mvp.catalog.internal.entity.PostTag;
+import com.prishtha.mvp.catalog.internal.entity.PostTagId;
 import com.prishtha.mvp.catalog.internal.entity.PostStatus;
 import com.prishtha.mvp.catalog.internal.entity.PricingType;
+import com.prishtha.mvp.catalog.internal.entity.Tag;
+import com.prishtha.mvp.catalog.internal.repository.PostTagRepository;
 import com.prishtha.mvp.catalog.internal.repository.PostRepository;
+import com.prishtha.mvp.catalog.internal.repository.TagRepository;
 import java.text.Normalizer;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 class AuthorPostServiceImpl implements AuthorPostService {
 
     private final PostRepository postRepository;
+    private final TagRepository tagRepository;
+    private final PostTagRepository postTagRepository;
 
     @Override
     public AuthorPostResponseDto createDraftPost(Long authorProfileId, AuthorPostUpsertRequestDto requestDto) {
@@ -115,6 +126,36 @@ class AuthorPostServiceImpl implements AuthorPostService {
         post.setStatus(PostStatus.DRAFT);
         post.setPublishedAt(null);
         return toDto(postRepository.save(post));
+    }
+
+    @Override
+    public AuthorPostResponseDto assignTags(
+            Long authorProfileId, Long postId, AssignPostTagsRequestDto requestDto) {
+        Post post = findMyPost(authorProfileId, postId);
+        List<String> requestedSlugs = requestDto == null || requestDto.getTagSlugs() == null
+                ? Collections.emptyList()
+                : requestDto.getTagSlugs().stream()
+                        .filter(slug -> slug != null && !slug.isBlank())
+                        .map(String::trim)
+                        .toList();
+
+        List<String> uniqueSlugs = new java.util.ArrayList<>(new HashSet<>(requestedSlugs));
+        List<Tag> tags = uniqueSlugs.isEmpty() ? Collections.emptyList() : tagRepository.findBySlugIn(uniqueSlugs);
+
+        if (tags.size() != uniqueSlugs.size()) {
+            throw new IllegalArgumentException("One or more tag slugs are invalid");
+        }
+
+        postTagRepository.deleteByPost_Id(post.getId());
+        for (Tag tag : tags) {
+            PostTag postTag = new PostTag();
+            postTag.setId(new PostTagId(post.getId(), tag.getId()));
+            postTag.setPost(post);
+            postTag.setTag(tag);
+            postTagRepository.save(postTag);
+        }
+
+        return toDto(post);
     }
 
     private Post findMyPost(Long authorProfileId, Long postId) {

@@ -7,7 +7,7 @@ import org.springframework.data.domain.Pageable;
 
 public interface CatalogService {
 
-    Page<PostSummaryResponseDto> getPublishedPosts(String query, Pageable pageable);
+    Page<PostSummaryResponseDto> getPublishedPosts(String query, String tagSlug, Pageable pageable);
 
     PostDetailResponseDto getPublishedPostBySlug(String slug);
 }

@@ -35,4 +35,17 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             """)
     Page<Post> searchPublishedPosts(
             @Param("status") PostStatus status, @Param("query") String query, Pageable pageable);
+
+    @Query("""
+            SELECT DISTINCT p
+            FROM Post p
+            JOIN PostTag pt ON pt.post.id = p.id
+            JOIN Tag t ON t.id = pt.tag.id
+            WHERE p.status = :status
+              AND p.deletedAt IS NULL
+              AND t.slug = :tagSlug
+            ORDER BY p.publishedAt DESC
+            """)
+    Page<Post> findPublishedPostsByTagSlug(
+            @Param("status") PostStatus status, @Param("tagSlug") String tagSlug, Pageable pageable);
 }

@@ -20,9 +20,11 @@ class CatalogServiceImpl implements CatalogService {
     private final PostRepository postRepository;
 
     @Override
-    public Page<PostSummaryResponseDto> getPublishedPosts(String query, Pageable pageable) {
+    public Page<PostSummaryResponseDto> getPublishedPosts(String query, String tagSlug, Pageable pageable) {
         Page<Post> posts;
-        if (query == null || query.isBlank()) {
+        if (tagSlug != null && !tagSlug.isBlank()) {
+            posts = postRepository.findPublishedPostsByTagSlug(PostStatus.PUBLISHED, tagSlug.trim(), pageable);
+        } else if (query == null || query.isBlank()) {
             posts = postRepository.findByStatusAndDeletedAtIsNullOrderByPublishedAtDesc(
                     PostStatus.PUBLISHED, pageable);
         } else {
