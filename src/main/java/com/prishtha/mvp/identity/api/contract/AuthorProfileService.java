@@ -12,4 +12,6 @@ public interface AuthorProfileService {
             Long requesterUserId, AuthorProfileUpdateRequestDto requestDto);
 
     PublicAuthorProfileResponseDto getPublicAuthorProfile(Long authorProfileId);
+
+    void ensureAuthorIsActive(Long authorProfileId);
 }

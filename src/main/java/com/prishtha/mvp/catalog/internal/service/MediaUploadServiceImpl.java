@@ -5,6 +5,7 @@ import com.prishtha.mvp.catalog.api.dto.response.MediaUploadResponseDto;
 import com.prishtha.mvp.catalog.internal.config.MediaStorageProperties;
 import com.prishtha.mvp.catalog.internal.entity.PostMedia;
 import com.prishtha.mvp.catalog.internal.repository.PostMediaRepository;
+import com.prishtha.mvp.identity.api.contract.AuthorProfileService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,9 +27,11 @@ class MediaUploadServiceImpl implements MediaUploadService {
 
     private final PostMediaRepository postMediaRepository;
     private final MediaStorageProperties mediaStorageProperties;
+    private final AuthorProfileService authorProfileService;
 
     @Override
     public MediaUploadResponseDto uploadImage(Long authorProfileId, MultipartFile file) {
+        authorProfileService.ensureAuthorIsActive(authorProfileId);
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("File must not be empty");
         }

@@ -4,6 +4,7 @@ import com.prishtha.mvp.catalog.api.contract.AuthorPostService;
 import com.prishtha.mvp.catalog.api.dto.request.AssignPostTagsRequestDto;
 import com.prishtha.mvp.catalog.api.dto.request.AuthorPostUpsertRequestDto;
 import com.prishtha.mvp.catalog.api.dto.response.AuthorPostResponseDto;
+import com.prishtha.mvp.identity.api.contract.AuthorProfileService;
 import com.prishtha.mvp.catalog.internal.entity.Post;
 import com.prishtha.mvp.catalog.internal.entity.PostTag;
 import com.prishtha.mvp.catalog.internal.entity.PostTagId;
@@ -32,9 +33,11 @@ class AuthorPostServiceImpl implements AuthorPostService {
     private final PostRepository postRepository;
     private final TagRepository tagRepository;
     private final PostTagRepository postTagRepository;
+    private final AuthorProfileService authorProfileService;
 
     @Override
     public AuthorPostResponseDto createDraftPost(Long authorProfileId, AuthorPostUpsertRequestDto requestDto) {
+        authorProfileService.ensureAuthorIsActive(authorProfileId);
         validateBody(requestDto.getBody());
         validatePricing(requestDto.getPricingType(), requestDto.getPriceAmount());
 
@@ -57,6 +60,7 @@ class AuthorPostServiceImpl implements AuthorPostService {
     @Override
     public AuthorPostResponseDto updateDraftPost(
             Long authorProfileId, Long postId, AuthorPostUpsertRequestDto requestDto) {
+        authorProfileService.ensureAuthorIsActive(authorProfileId);
         Post post = findMyPost(authorProfileId, postId);
         if (post.getStatus() != PostStatus.DRAFT) {
             throw new IllegalArgumentException("Only draft posts can be edited");
@@ -93,6 +97,7 @@ class AuthorPostServiceImpl implements AuthorPostService {
 
     @Override
     public void softDeleteMyPost(Long authorProfileId, Long postId) {
+        authorProfileService.ensureAuthorIsActive(authorProfileId);
         Post post = findMyPost(authorProfileId, postId);
         post.setDeletedAt(Instant.now());
         postRepository.save(post);
@@ -100,6 +105,7 @@ class AuthorPostServiceImpl implements AuthorPostService {
 
     @Override
     public AuthorPostResponseDto publishPost(Long authorProfileId, Long postId) {
+        authorProfileService.ensureAuthorIsActive(authorProfileId);
         Post post = findMyPost(authorProfileId, postId);
         if (post.getStatus() == PostStatus.PUBLISHED) {
             throw new IllegalArgumentException("Post is already published");
@@ -118,6 +124,7 @@ class AuthorPostServiceImpl implements AuthorPostService {
 
     @Override
     public AuthorPostResponseDto unpublishPost(Long authorProfileId, Long postId) {
+        authorProfileService.ensureAuthorIsActive(authorProfileId);
         Post post = findMyPost(authorProfileId, postId);
         if (post.getStatus() != PostStatus.PUBLISHED) {
             throw new IllegalArgumentException("Only published posts can be unpublished");
@@ -131,6 +138,7 @@ class AuthorPostServiceImpl implements AuthorPostService {
     @Override
     public AuthorPostResponseDto assignTags(
             Long authorProfileId, Long postId, AssignPostTagsRequestDto requestDto) {
+        authorProfileService.ensureAuthorIsActive(authorProfileId);
         Post post = findMyPost(authorProfileId, postId);
         List<String> requestedSlugs = requestDto == null || requestDto.getTagSlugs() == null
                 ? Collections.emptyList()

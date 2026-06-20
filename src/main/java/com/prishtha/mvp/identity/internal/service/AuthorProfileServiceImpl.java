@@ -88,6 +88,16 @@ class AuthorProfileServiceImpl implements AuthorProfileService {
                 .build();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public void ensureAuthorIsActive(Long authorProfileId) {
+        AuthorProfile authorProfile = authorProfileRepository.findById(authorProfileId)
+                .orElseThrow(() -> new IllegalArgumentException("Author profile not found"));
+        if (!authorProfile.isActive()) {
+            throw new IllegalArgumentException("Author account is deactivated");
+        }
+    }
+
     private void ensureAuthor(User user) {
         if (user.getRole() != UserRole.AUTHOR) {
             throw new IllegalArgumentException("Only authors can perform this action");
