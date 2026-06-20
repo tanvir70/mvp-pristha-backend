@@ -71,8 +71,9 @@ Using Java 25 Virtual Threads (Loom) changes how we handle resource pools:
 
 ## 4. White-Label Storefront Customization (Tenancy Metadata)
 
-> **Status: deferred for MVP.** `doc/pristha_database_design_mvp.md` explicitly
-> excludes white-label domains/themes from the MVP scope, and the
+> **Status: deferred for MVP.** `doc/database_entity_analysis.md` (§2.2,
+> `tenant` module) confirms white-label domains/themes are excluded from the
+> MVP scope, and the
 > `TenantContext`/`TenantDomain`/`TenantTheme`/`TenantInterceptor` code that
 > implemented this was removed in favor of a single-tenant `tenant.tenants`
 > table (`id = 1`). The design below is preserved as the plan for when

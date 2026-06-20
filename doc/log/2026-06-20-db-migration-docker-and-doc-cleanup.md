@@ -1,9 +1,8 @@
-# Migration Log — Codebase Alignment to `pristha_database_design_mvp.md`
+# Engineering Log — DB Design Migration, Docker Secrets, Doc Cleanup
 
 **Date:** 2026-06-20
 **Trigger:** Codebase had drifted onto a different, earlier (Cursor-authored)
-schema (`doc/db-design-mvp.md`) instead of our own canonical design
-(`doc/pristha_database_design_mvp.md`). Discovered when new repositories
+schema instead of our own canonical design. Discovered when new repositories
 were being added against the *existing* (wrong) entities instead of being
 reconciled against the canonical doc. Decision: migrate the code to match
 the doc, not the reverse, and not a hybrid.
@@ -16,22 +15,24 @@ kept a pure data-layer rewrite.
 
 ---
 
-## Decisions made
+## Part 1 — DB design migration
 
-### 1. Tenant white-label routing — removed
+### Decisions made
+
+#### 1. Tenant white-label routing — removed
 `TenantDomain`, `TenantTheme`, `TenantInterceptor`, `WebMvcConfig`,
 `TenantContext` were fully wired in code but the canonical doc explicitly
 defers white-label domains/themes for the MVP. Asked the user; chose to
 simplify to single-tenant (`tenant.tenants`, id = 1) rather than keep
 out-of-scope infrastructure alive.
 
-### 2. Flyway strategy — rewrite in place, not append
+#### 2. Flyway strategy — rewrite in place, not append
 No production data exists yet (pre-launch), so existing `V1`/`V2` migration
 files were edited/replaced directly and renumbered to the doc's global
 `V0`–`V8` ordering, instead of appending new versioned migrations on top of
 the wrong schema. Asked the user; confirmed rewrite-in-place.
 
-### 3. `updated_at` ownership — DB trigger, not just Java
+#### 3. `updated_at` ownership — DB trigger, not just Java
 The doc specifies `updated_at` is maintained by a Postgres trigger
 (`shared.set_updated_at`), while the existing code only managed timestamps
 in Java (`BaseEntity` `@PrePersist`/`@PreUpdate`). Rather than silently
@@ -41,7 +42,7 @@ on every table with both `created_at`/`updated_at`. Left `BaseEntity`
 untouched — its `@PreUpdate` becomes redundant (trigger overwrites
 `updated_at` again on the real `UPDATE`) but harmless.
 
-### 4. Entity-modeling rule (applied consistently across all modules)
+#### 4. Entity-modeling rule (applied consistently across all modules)
 - Extend `BaseEntity` only when a table has **both** `created_at NOT NULL`
   and `updated_at NOT NULL`. Tables with only one timestamp (or none) get a
   plain `@Id @GeneratedValue(IDENTITY)` entity with manual `@PrePersist`.
@@ -59,9 +60,7 @@ untouched — its `@PreUpdate` becomes redundant (trigger overwrites
   Modulith would block reaching into another module's `internal.enums`
   package regardless of `allowedDependencies`.
 
----
-
-## Work done, by phase
+### Work done, by phase
 
 | Phase | Module | Action |
 |---|---|---|
@@ -76,9 +75,7 @@ untouched — its `@PreUpdate` becomes redundant (trigger overwrites
 | 8 | `analytics` | **New module.** `ContentView` (deduplicated view log), `ContentUnlock` (decoupled unlock log for async analysis). `V8__init_analytics.sql`. |
 | 9 | wiring | `application.properties` `spring.flyway.locations` updated to include `shared`, `studio`, `analytics` in doc order (`shared→identity→tenant→studio→catalog→social→reading→billing→analytics`). |
 
----
-
-## Verification
+### Verification
 
 - `./gradlew compileJava` / `compileTestJava` — clean, no leftover references
   to deleted types (`UserRole`, `UserStatus.VERIFIED`, `TenantContext`,
@@ -93,7 +90,7 @@ untouched — its `@PreUpdate` becomes redundant (trigger overwrites
   - `IdentityServiceIntegrationTests` (signup + OTP verify flow, now
     asserting `ACTIVE` status)
 
-## Not done (explicitly out of scope for this pass)
+### Not done (explicitly out of scope for this pass)
 
 - No new services/controllers/DTOs for `studio`, `catalog`, `social`,
   `reading`, `billing`, `analytics` — only `identity` has a working HTTP
@@ -103,3 +100,64 @@ untouched — its `@PreUpdate` becomes redundant (trigger overwrites
   future work.
 - No manual end-to-end click-through beyond the existing identity
   signup/OTP endpoints (the only live HTTP flow).
+
+---
+
+## Part 2 — Docker secrets setup
+
+**Trigger:** project already had a `compose.yaml` (Spring Boot Docker
+Compose support, `developmentOnly` dependency in `build.gradle`) and a
+`Dockerfile`, but the compose file hardcoded a placeholder Postgres
+password (`secret`) that didn't even match the app's real local credentials.
+
+### Decisions made
+- Kept the existing `compose.yaml` instead of adding a second, redundant
+  compose file — `spring-boot-docker-compose` auto-starts it and auto-wires
+  the datasource from the running container, so no manual `spring.datasource.*`
+  is required for local dev.
+- Switched `compose.yaml` to read `POSTGRES_DB`/`POSTGRES_USER`/
+  `POSTGRES_PASSWORD` from environment variables (via `.env`), with `:?`
+  Compose syntax to hard-fail if the password is missing, instead of a
+  literal secret committed to the file.
+- Added `.env` (gitignored, real local values) + `.env.example` (committed
+  template) and added `.env` to `.gitignore`.
+- `application.properties` `spring.datasource.*` switched to
+  `${SPRING_DATASOURCE_URL/USERNAME/PASSWORD:...}` placeholders with the old
+  values as local-dev fallback defaults — lets the production `Dockerfile`
+  deploy (Render) inject real secrets via env vars instead.
+- Container's published Postgres port remapped from host `5432` → `5433`
+  (kept container-internal port at `5432`) after discovering the user's
+  native local Postgres install already occupies host port `5432`. Spring
+  Boot's docker-compose support discovers the actual published port by
+  inspecting the container, so no other config needed updating.
+
+### Verification
+- `docker compose config` resolves `POSTGRES_DB=mvp`/`POSTGRES_USER=postgres`/
+  `POSTGRES_PASSWORD=psql` correctly from `.env` (later changed by the user
+  to `POSTGRES_DB=pristha`).
+- Could not fully boot the container in the agent sandbox (no Docker daemon
+  there) — confirmed config resolution only; user verifies actual `docker
+  compose up` / `./gradlew bootRun` on their machine.
+
+---
+
+## Part 3 — Documentation cleanup
+
+- Merged `doc/architectural_audit_checklist_v2.md` into
+  `doc/architectural_audit_checklist.md` (now `doc/Design/architectural_audit_checklist.md`)
+  as sections 5–7; deleted the `_v2` file. Flagged §4 (white-label tenancy)
+  as deferred-for-MVP rather than silently leaving it contradicting the
+  already-simplified single-tenant code.
+- Deleted `doc/db-design-mvp.md` (old, superseded Cursor-style design) and
+  `doc/pristha_database_design_mvp.md` (the canonical design blueprint used
+  throughout Part 1) in favor of `doc/database_entity_analysis.md` as the
+  single, current source of truth for the data model — now that the
+  implementation matches the design exactly, the as-built entity dictionary
+  supersedes the original blueprint.
+- Repointed the dangling citation this left in
+  `doc/Design/architectural_audit_checklist.md` (§4) from
+  `pristha_database_design_mvp.md` to `database_entity_analysis.md`.
+- **Flagged, not fixed:** `doc/task/mvp-feature-breakdown.md` still links to
+  the now-deleted `db-design-mvp.md` twice and its scope description is
+  framed entirely around the old "posts-only" design — stale beyond just a
+  broken link, pending a separate decision on whether to update or retire it.
