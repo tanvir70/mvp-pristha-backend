@@ -24,6 +24,8 @@ class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .requestMatchers("/api/v1/posts/**").permitAll()
+                .requestMatchers("/api/v1/tags/**").permitAll()
+                .requestMatchers("/uploads/**").permitAll()
                 .anyRequest().authenticated()
             );
         return http.build();
