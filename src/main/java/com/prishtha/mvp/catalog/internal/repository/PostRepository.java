@@ -15,6 +15,12 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     Optional<Post> findBySlugAndStatusAndDeletedAtIsNull(String slug, PostStatus status);
 
+    Optional<Post> findByIdAndAuthorIdAndDeletedAtIsNull(Long id, Long authorId);
+
+    Page<Post> findByAuthorIdAndDeletedAtIsNullOrderByUpdatedAtDesc(Long authorId, Pageable pageable);
+
+    boolean existsBySlug(String slug);
+
     @Query("""
             SELECT p
             FROM Post p
