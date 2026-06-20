@@ -4,7 +4,7 @@ import com.prishtha.mvp.identity.api.contract.IdentityService;
 import com.prishtha.mvp.identity.api.dto.request.UserSignUpRequestDto;
 import com.prishtha.mvp.identity.api.dto.response.UserBasicInfoResponseDto;
 import com.prishtha.mvp.identity.internal.entity.User;
-import com.prishtha.mvp.identity.internal.entity.UserStatus;
+import com.prishtha.mvp.identity.internal.enums.UserStatus;
 import com.prishtha.mvp.identity.internal.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -44,7 +44,7 @@ class IdentityServiceImpl implements IdentityService {
             throw new IllegalArgumentException("Invalid OTP code");
         }
 
-        user.setStatus(UserStatus.VERIFIED);
+        user.setStatus(UserStatus.ACTIVE);
         User savedUser = userRepository.save(user);
         return mapToResponseDto(savedUser);
     }
