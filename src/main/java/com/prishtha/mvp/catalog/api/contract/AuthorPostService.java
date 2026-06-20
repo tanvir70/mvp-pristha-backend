@@ -17,4 +17,8 @@ public interface AuthorPostService {
     AuthorPostResponseDto getMyPostById(Long authorProfileId, Long postId);
 
     void softDeleteMyPost(Long authorProfileId, Long postId);
+
+    AuthorPostResponseDto publishPost(Long authorProfileId, Long postId);
+
+    AuthorPostResponseDto unpublishPost(Long authorProfileId, Long postId);
 }

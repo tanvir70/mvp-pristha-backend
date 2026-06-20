@@ -87,6 +87,36 @@ class AuthorPostServiceImpl implements AuthorPostService {
         postRepository.save(post);
     }
 
+    @Override
+    public AuthorPostResponseDto publishPost(Long authorProfileId, Long postId) {
+        Post post = findMyPost(authorProfileId, postId);
+        if (post.getStatus() == PostStatus.PUBLISHED) {
+            throw new IllegalArgumentException("Post is already published");
+        }
+        if (post.getDeletedAt() != null) {
+            throw new IllegalArgumentException("Deleted posts cannot be published");
+        }
+
+        validateBody(post.getBody());
+        validatePricing(post.getPricingType(), post.getPriceAmount());
+
+        post.setStatus(PostStatus.PUBLISHED);
+        post.setPublishedAt(Instant.now());
+        return toDto(postRepository.save(post));
+    }
+
+    @Override
+    public AuthorPostResponseDto unpublishPost(Long authorProfileId, Long postId) {
+        Post post = findMyPost(authorProfileId, postId);
+        if (post.getStatus() != PostStatus.PUBLISHED) {
+            throw new IllegalArgumentException("Only published posts can be unpublished");
+        }
+
+        post.setStatus(PostStatus.DRAFT);
+        post.setPublishedAt(null);
+        return toDto(postRepository.save(post));
+    }
+
     private Post findMyPost(Long authorProfileId, Long postId) {
         return postRepository.findByIdAndAuthorIdAndDeletedAtIsNull(postId, authorProfileId)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found for this author"));
