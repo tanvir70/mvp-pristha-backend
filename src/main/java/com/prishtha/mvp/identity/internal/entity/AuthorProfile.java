@@ -1,8 +1,11 @@
 package com.prishtha.mvp.identity.internal.entity;
 
+import com.prishtha.mvp.identity.internal.enums.MfsProvider;
 import com.prishtha.mvp.shared.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
@@ -20,15 +23,16 @@ public class AuthorProfile extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
 
-    @Column(name = "pen_name", unique = true, length = 80)
+    @Column(name = "pen_name", nullable = false, unique = true, length = 100)
     private String penName;
 
     @Column(name = "biography", columnDefinition = "TEXT")
     private String biography;
 
-    @Column(name = "payout_phone", length = 15)
-    private String payoutPhone;
+    @Column(name = "payout_mfs_number", nullable = false, length = 20)
+    private String payoutMfsNumber;
 
-    @Column(name = "is_active", nullable = false)
-    private boolean active = true;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payout_mfs_provider", nullable = false, length = 20)
+    private MfsProvider payoutMfsProvider;
 }
