@@ -38,3 +38,6 @@ out/
 
 ### Local uploads ###
 uploads/
+
+### Environment secrets ###
+.env
