@@ -1,26 +1,15 @@
 CREATE SCHEMA IF NOT EXISTS tenant;
 
 CREATE TABLE tenant.tenants (
-    id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name       VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TRIGGER trg_tenants_updated
+    BEFORE UPDATE ON tenant.tenants
+    FOR EACH ROW EXECUTE FUNCTION shared.set_updated_at();
 
-CREATE TABLE tenant.tenant_domains (
-    id BIGSERIAL PRIMARY KEY,
-    tenant_id BIGINT NOT NULL REFERENCES tenant.tenants(id),
-    custom_domain VARCHAR(255) NOT NULL UNIQUE,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
-);
-
-CREATE TABLE tenant.tenant_themes (
-    id BIGSERIAL PRIMARY KEY,
-    tenant_id BIGINT NOT NULL UNIQUE REFERENCES tenant.tenants(id),
-    brand_logo_url VARCHAR(512),
-    primary_color VARCHAR(10) DEFAULT '#000000',
-    secondary_color VARCHAR(10) DEFAULT '#FFFFFF',
-    custom_stylesheet_url VARCHAR(512),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
-);
+-- MVP default tenant (OVERRIDING so the identity column accepts id = 1).
+INSERT INTO tenant.tenants (id, name)
+OVERRIDING SYSTEM VALUE VALUES (1, 'Pristha');

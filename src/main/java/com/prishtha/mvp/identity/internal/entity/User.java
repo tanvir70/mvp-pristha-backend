@@ -1,5 +1,6 @@
 package com.prishtha.mvp.identity.internal.entity;
 
+import com.prishtha.mvp.identity.internal.enums.UserStatus;
 import com.prishtha.mvp.shared.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -36,8 +37,4 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private UserStatus status = UserStatus.PENDING_VERIFICATION;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "role", nullable = false, length = 20)
-    private UserRole role = UserRole.READER;
 }
