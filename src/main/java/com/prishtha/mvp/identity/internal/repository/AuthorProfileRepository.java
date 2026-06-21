@@ -6,4 +6,8 @@ import java.util.Optional;
 
 public interface AuthorProfileRepository extends JpaRepository<AuthorProfile, Long> {
     Optional<AuthorProfile> findByPenName(String penName);
+
+    boolean existsByUser_Id(Long userId);
+
+    Optional<AuthorProfile> findByUser_Id(Long userId);
 }
