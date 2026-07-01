@@ -4,6 +4,7 @@ import com.prishtha.mvp.identity.api.contract.IdentityService;
 import com.prishtha.mvp.identity.api.dto.request.UserSignUpRequestDto;
 import com.prishtha.mvp.identity.api.dto.response.UserBasicInfoResponseDto;
 import com.prishtha.mvp.identity.internal.entity.User;
+import com.prishtha.mvp.identity.internal.enums.OtpPurpose;
 import com.prishtha.mvp.identity.internal.enums.UserStatus;
 import com.prishtha.mvp.identity.internal.repository.AuthorProfileRepository;
 import com.prishtha.mvp.identity.internal.repository.UserRepository;
@@ -21,6 +22,7 @@ class IdentityServiceImpl implements IdentityService {
     private final UserRepository userRepository;
     private final AuthorProfileRepository authorProfileRepository;
     private final PasswordEncoder passwordEncoder;
+    private final OtpService otpService;
 
     @Override
     public UserBasicInfoResponseDto signUp(UserSignUpRequestDto requestDto) {
@@ -35,6 +37,7 @@ class IdentityServiceImpl implements IdentityService {
         user.setStatus(UserStatus.PENDING_VERIFICATION);
 
         User savedUser = userRepository.save(user);
+        otpService.sendOtp(savedUser.getPhone(), OtpPurpose.SIGNUP_VERIFICATION);
         return mapToResponseDto(savedUser);
     }
 
@@ -43,7 +46,7 @@ class IdentityServiceImpl implements IdentityService {
         User user = userRepository.findByPhone(phone)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        if (!"123456".equals(code)) {
+        if (!otpService.verifyOtp(phone, OtpPurpose.SIGNUP_VERIFICATION, code)) {
             throw new IllegalArgumentException("Invalid OTP code");
         }
 
