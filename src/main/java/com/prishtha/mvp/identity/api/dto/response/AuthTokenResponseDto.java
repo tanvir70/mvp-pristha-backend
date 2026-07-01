@@ -19,4 +19,9 @@ public class AuthTokenResponseDto {
     private String fullName;
     private List<String> roles;
     private Long authorProfileId;
+
+    // Set instead of the token fields above when the account has MFA enabled;
+    // the client must call POST /mfa/verify with this token to complete login.
+    private boolean mfaRequired;
+    private String mfaToken;
 }
