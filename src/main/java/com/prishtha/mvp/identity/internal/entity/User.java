@@ -16,11 +16,17 @@ import lombok.Setter;
 @Setter
 public class User extends BaseEntity {
 
-    @Column(name = "phone", nullable = false, unique = true, length = 15)
+    @Column(name = "phone", unique = true, length = 15)
     private String phone;
 
-    @Column(name = "password_hash", nullable = false, length = 255)
+    @Column(name = "password_hash", length = 255)
     private String passwordHash;
+
+    @Column(name = "google_sub", unique = true, length = 255)
+    private String googleSub;
+
+    @Column(name = "mfa_enabled", nullable = false)
+    private boolean mfaEnabled = false;
 
     @Column(name = "full_name", nullable = false, length = 120)
     private String fullName;
