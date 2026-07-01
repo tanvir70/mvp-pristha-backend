@@ -9,5 +9,10 @@ public record AuthProperties(
         Duration refreshTokenTtl,
         Duration loginAttemptsWindow,
         Duration loginLockTtl,
-        int maxLoginAttempts) {
+        int maxLoginAttempts,
+        Duration otpTtl,
+        int otpMaxAttempts,
+        Duration mfaChallengeTtl,
+        Duration rateLimitWindow,
+        int rateLimitMaxRequests) {
 }
