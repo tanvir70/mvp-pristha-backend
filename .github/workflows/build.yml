@@ -1,0 +1,22 @@
+# Guards against merging code that doesn't compile (the June 21 refactor
+# landed 68 compile errors unnoticed because nothing ran compileJava on PRs).
+# ponytail: compile-only — upgrade to `./gradlew test` with postgres/redis
+# service containers once the catalog/identity compile errors are fixed.
+name: build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew compileJava compileTestJava
