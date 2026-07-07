@@ -1,8 +1,9 @@
 # Engineering Log — Enterprise Auth Hardening (Social Login, MFA, Sessions, Audit, Rate Limiting, Password Recovery)
 
 **Author:** Tanvir
-**Date:** 2026-07-01
-**Branch:** `feature/jwt-login-logout`
+**Date:** 2026-07-01 (build) — merged with a full mechanical walkthrough 2026-07-07
+**Branch:** `feature/jwt-login-logout` (commits `70cf39d..f6f81bf`, pushed to
+`origin/feature/jwt-login-logout`)
 **Trigger:** The existing JWT login/refresh/logout implementation (see
 `doc/2026-06-23-jwt-login-logout-implementation.md`) was an MVP-scoped slice
 of ID-FR-03/04/05 and NFR-04. The request for this session was explicit:
@@ -13,6 +14,11 @@ revocation, a security audit trail, endpoint rate limiting, and self-service
 password recovery/change — on top of the existing RS256 JWT + opaque
 Redis-backed refresh token foundation, without discarding or redesigning it.
 
+This document covers both the **decisions and rationale** (why each piece is
+built the way it is) and the **mechanics** (how each flow actually executes,
+step by step, through real classes/Redis keys/SQL tables/JWT claims) in one
+place.
+
 ---
 
 ## 0. Scope-setting (asked before writing code)
@@ -20,23 +26,12 @@ Redis-backed refresh token foundation, without discarding or redesigning it.
 "Enterprise security" is not a fixed checklist, so before touching any file
 four scoping questions were put to the user:
 
-1. **Base branch** — the JWT work already existed, unmerged, on
-   `feature/jwt-login-logout`. Chosen: **build on top of that branch**
-   (not merge to `develop` first, not start over). This kept the diff a
-   continuation of one coherent auth story instead of two overlapping ones.
-2. **Social providers** — chosen: **Google only**. Facebook/Apple were
-   explicitly deferred; the verification abstraction (`GoogleTokenVerifierService`)
-   is provider-shaped so adding another provider later is a new
-   implementation of a similar interface, not a redesign.
-3. **Hardening features** — chosen (all four): OTP-based MFA, session/device
-   management, security audit log, rate limiting on auth endpoints.
-4. **Password lifecycle** — chosen: **include** forgot/reset/change password
-   in this same build rather than defer it, since MFA and password-reset both
-   need the same OTP delivery mechanism — building it twice would have been
-   worse than building it once and sharing it.
-
-This is why the OTP mechanism ended up as shared infrastructure (see §2)
-rather than three separate implementations.
+| Question | Answer chosen | Why it mattered |
+|---|---|---|
+| Continue on the existing JWT branch, merge into `develop` first, or start over? | **Continue on `feature/jwt-login-logout`** | Every new class had to compose with the *existing* `AuthServiceImpl`, `CacheService`, `JwtConfig`, `SecurityConfig` rather than a redesign — kept the diff one coherent auth story instead of two overlapping ones. |
+| Which social providers? | **Google only** | Facebook/Apple explicitly deferred; `GoogleTokenVerifierService` is a narrow, single-purpose wrapper rather than a multi-provider abstraction built before it was needed. |
+| Which hardening features? | **All four offered:** OTP MFA, session/device management, audit log, rate limiting | These four subsystems share infrastructure where it made sense — see §2, one `OtpService`, not three. |
+| Include password reset/change in this same build? | **Yes** | This is *why* OTP ended up centralized — MFA and password-reset both need to send/verify a one-time code, so building the mechanism once and routing three call sites through it was simpler and more consistent than three copies. |
 
 ---
 
@@ -64,22 +59,27 @@ state of the `identity` module (not assumed state), specifically:
   `AuthorRequestStatus` types that don't exist in `identity.internal.entity`,
   and several `catalog` repositories/services reference a `Post`/`Tag`/
   `PostMedia` entity model that isn't present either. Cross-referencing the
-  most recent `doc/log` entry, `UserRole` was **deliberately deleted** in an
-  earlier DB-design migration (roles are derived from `AuthorProfile`
-  existence, never stored) and the admin-gated `AuthorRequest` workflow was
-  **deliberately removed** in favor of open author onboarding — but the
-  service/repository files that still reference them were never deleted from
-  this branch. This is pre-existing and unrelated to auth; it was **not**
-  touched, only confirmed (via `compileJava` output, cross-checked file by
-  file) that none of the errors trace back to any file this session created
-  or modified.
+  earlier `doc/log/2026-06-20-db-migration-docker-and-doc-cleanup.md` entry,
+  `UserRole` was **deliberately deleted** in an earlier DB-design migration
+  (roles are derived from `AuthorProfile` existence, never stored) and the
+  admin-gated `AuthorRequest` workflow was **deliberately removed** in favor
+  of open author onboarding — but the service/repository files that still
+  reference them were never deleted from this branch. This is pre-existing
+  and unrelated to auth; it was **not** touched, only confirmed (via
+  `compileJava` output, cross-checked file by file) that none of the errors
+  trace back to any file this session created or modified.
 
 ---
 
 ## 2. OTP: made real, and made shared
 
 **Decision: one `OtpService`, used by signup verification, login MFA, and
-password reset — not three separate mechanisms.**
+password reset — not three separate mechanisms.** Three different call sites
+(`IdentityServiceImpl.signUp`/`verifyOtp`, the MFA challenge in
+`AuthServiceImpl`, and `forgotPassword`/`resetPassword` in `AuthServiceImpl`)
+all need "generate a short-lived one-time code, deliver it, later verify it,
+cap the number of guesses." Building that once avoided three subtly-different,
+inconsistent implementations.
 
 - `OtpServiceImpl` generates a random 6-digit code (`SecureRandom`), hashes it
   with the **existing** `PasswordEncoder` (BCrypt) bean before storing it, and
@@ -89,7 +89,7 @@ password reset — not three separate mechanisms.**
     Defense-in-depth against a Redis compromise, not against online guessing —
     online guessing is already bounded by `incrementOtpAttempts` (deletes the
     OTP outright after `identity.auth.otp-max-attempts` wrong tries, forcing a
-    fresh request) and by the endpoint-level rate limiter (§6). Reusing the
+    fresh request) and by the endpoint-level rate limiter (§8). Reusing the
     already-injected `PasswordEncoder` bean avoided adding a second hashing
     scheme for no real gain (ladder rung 4: reuse an already-installed
     dependency).
@@ -110,6 +110,39 @@ password reset — not three separate mechanisms.**
   `"123456"` stub onto this same `OtpService`. This was in scope because
   leaving the old fake OTP alongside a new real one would have meant two
   competing, inconsistent "OTP" concepts in the same module.
+
+### How it works, mechanically
+
+`OtpServiceImpl.sendOtp(phone, purpose)`:
+1. `SecureRandom.nextInt(1_000_000)` → zero-padded to 6 digits
+   (`String.format("%06d", ...)`).
+2. Hashes that code with the **existing `PasswordEncoder` bean** — no second
+   hashing scheme introduced.
+3. `CacheService.storeOtp(phone, purpose.name(), hash, ttl)` writes the hash
+   to Redis key **`otp:{purpose}:{phone}`** with a TTL from
+   `AuthProperties.otpTtl()` (default `5m`, `identity.auth.otp-ttl`).
+4. `OtpDeliveryService.send(phone, code)` is called with the **plaintext**
+   code (the hash never leaves the server) — currently
+   `LoggingOtpDeliveryServiceImpl`, which logs `"OTP for {phone}: {code}"`
+   instead of sending an SMS.
+
+`OtpServiceImpl.verifyOtp(phone, purpose, code)`:
+1. `CacheService.getOtpHash(phone, purpose.name())` — if Redis has nothing
+   (expired or never requested), returns `false` immediately.
+2. `passwordEncoder.matches(code, hash)` — if it matches,
+   `CacheService.deleteOtp(...)` (removes both the code and its attempt
+   counter) and returns `true`. A code can only ever be used once.
+3. If it doesn't match, `CacheService.incrementOtpAttempts(phone,
+   purpose.name(), ttl)` increments Redis key
+   **`otp_attempts:{purpose}:{phone}`** (same `INCR`-then-`EXPIRE`-on-first-hit
+   pattern already used for login-lockout counting). Once that counter
+   reaches `AuthProperties.otpMaxAttempts()` (default `5`), the OTP itself is
+   deleted — forcing the caller to request a brand-new code rather than keep
+   guessing against the same one.
+
+Because `purpose` is part of the Redis key, a code issued for one purpose
+cannot be replayed to satisfy a different purpose, even for the same phone
+number, even if both happened to be requested in the same few minutes.
 
 ---
 
@@ -142,7 +175,7 @@ API doesn't have a use for.
   `AuthenticationFailedException` uniformly for a bad signature, wrong
   audience, expired token, or any I/O failure — the caller never needs to
   know which.
-- `User` schema changes (migration `V2`, see §7): `phone` and `password_hash`
+- `User` schema changes (migration `V2`, see §10): `phone` and `password_hash`
   became **nullable**, and a new **nullable, unique** `google_sub` column was
   added.
   - *Why not a separate `SocialIdentity` table?* A user has at most one
@@ -156,13 +189,39 @@ API doesn't have a use for.
     other reason to exist. Email (which Google always provides and already
     had a partial-unique index in the schema) becomes the natural identity
     key for social-only accounts instead.
-- Login flow: `loginWithGoogle` looks up by `google_sub` first, falls back to
-  linking-by-`email` (so a user who originally signed up with phone+password
-  and later uses "Sign in with Google" with the same email gets **linked**,
-  not duplicated), and only creates a brand-new `User` row if neither matches.
-  A social login goes through the exact same `completeAuthentication` →
-  `issueTokenResponse` path as a password login, including the same MFA gate
-  (see §4) and the same session-row creation (see §5).
+
+### How it works, mechanically
+
+`AuthServiceImpl.loginWithGoogle(SocialLoginRequestDto)`:
+1. `GoogleTokenVerifierServiceImpl.verify(idToken)` hands the raw ID token to
+   Google's own `GoogleIdTokenVerifier` (configured in `GoogleAuthConfig`
+   with the app's OAuth client ID as the required audience). This library —
+   not custom code — handles fetching/caching Google's public JWKS, rotating
+   keys, and tolerating clock skew. Any failure (bad signature, wrong
+   audience, expired, network error) throws
+   `AuthenticationFailedException("Invalid Google ID token")` uniformly.
+2. On success, the token's payload yields `subject` (Google's stable user
+   ID), `email`, `name`, `picture`.
+3. User resolution, in order:
+   - `userRepository.findByGoogleSub(subject)` — an existing linked account.
+   - else `userRepository.findByEmail(email)` — an existing account that
+     signed up by phone+password but shares this email; if found, its
+     `googleSub` is set on the spot (silent linking — the same person is
+     recognized across both login methods, not duplicated).
+   - else a brand-new `User` is constructed: `email`, `fullName`,
+     `avatarUrl` from Google's payload, `googleSub` set, `phone` and
+     `passwordHash` left `null`, `status = ACTIVE` immediately (Google has
+     already verified the email; there's no separate OTP-verification step
+     for social accounts).
+4. `userRepository.save(user)`.
+5. If the resolved/created user's `status != ACTIVE` (e.g. a suspended
+   existing account), reject with `AuthenticationFailedException("Account is
+   not active")`.
+6. A `SOCIAL_LOGIN_GOOGLE` audit row is written, then — exactly like
+   password login — `completeAuthentication(user)` runs, meaning a
+   Google-login user with `mfaEnabled = true` still hits the MFA challenge
+   (§4) before getting tokens, and token issuance (§5's mechanics) is
+   identical either way.
 
 ---
 
@@ -175,26 +234,13 @@ issued," not a separate parallel login endpoint.**
   re-entering the account password (`MfaToggleRequestDto{password}`) — a
   sensitive account-security toggle shouldn't be changeable just because the
   caller holds a still-valid 15-minute access token.
-- When `login()` or `loginWithGoogle()` succeeds against the primary factor
-  and `user.isMfaEnabled()` is true, the shared `completeAuthentication`
-  method does **not** issue tokens. Instead it:
-  1. Sends a `LOGIN_MFA`-purpose OTP to the user's phone via `OtpService`.
-  2. Generates a random opaque `mfaToken` (UUID) and stores
-     `mfaToken → userId` in Redis with a short TTL
-     (`identity.auth.mfa-challenge-ttl`, default 5m).
-  3. Returns `AuthTokenResponseDto` with **only** `mfaRequired=true` and
-     `mfaToken` populated — `accessToken`/`refreshToken`/etc. are left null.
-  - *Why extend the existing `AuthTokenResponseDto` with two nullable fields
-    instead of a new response type?* A new type would force every client to
-    branch on response **shape**; a nullable-field discriminator
-    (`mfaRequired`) lets clients branch on one boolean while the DTO stays a
-    single, stable contract. The five pre-existing tests for plain
-    login/refresh/logout are unaffected because `mfaEnabled` defaults to
-    `false` — they never touch this branch.
-- `POST /mfa/verify {mfaToken, code}` resolves `mfaToken → userId` from Redis,
-  verifies the OTP against `OtpPurpose.LOGIN_MFA` for that user's phone, and
-  on success calls the **same** `issueTokenResponse` used by normal login —
-  there is exactly one place in the codebase that mints tokens.
+- *Why extend the existing `AuthTokenResponseDto` with two nullable fields
+  instead of a new response type?* A new type would force every client to
+  branch on response **shape**; a nullable-field discriminator
+  (`mfaRequired`) lets clients branch on one boolean while the DTO stays a
+  single, stable contract. The five pre-existing tests for plain
+  login/refresh/logout are unaffected because `mfaEnabled` defaults to
+  `false` — they never touch this branch.
 - **Known limitation (documented, not fixed):** a user with no password set
   (a Google-only account) cannot currently call `enableMfa`/`disableMfa` or
   `changePassword`, because those all confirm identity via
@@ -202,6 +248,42 @@ issued," not a separate parallel login endpoint.**
   Google ID token as the confirmation factor for social-only accounts instead
   of a password — flagged with a `ponytail:` comment at the point where it
   would need to change, not silently left as a mystery 403.
+
+### How it works, mechanically
+
+`completeAuthentication(user)` is the single fork point every successful
+primary-factor login (password, Google) funnels through:
+- If `user.isMfaEnabled()` → `issueMfaChallenge(user)` — **no tokens issued
+  yet.**
+- Otherwise → `issueTokenResponse(user, null)` (§5) — tokens issued
+  immediately.
+
+`issueMfaChallenge(user)`:
+1. `otpService.sendOtp(user.getPhone(), OtpPurpose.LOGIN_MFA)` — generates
+   and "delivers" (logs) a fresh code, independent of any other OTP purpose
+   for that phone (different Redis key).
+2. A random `UUID` (`mfaToken`) is generated and
+   `cacheService.storeMfaChallenge(mfaToken, user.getId(), ttl)` writes Redis
+   key **`mfa_challenge:{mfaToken}` → `userId`** with TTL from
+   `AuthProperties.mfaChallengeTtl()` (default `5m`).
+3. A `SecurityEventType.MFA_CHALLENGE_ISSUED` audit row is written.
+4. Returns an `AuthTokenResponseDto` with **only** `mfaRequired=true` and
+   `mfaToken` set — every token field is left at its default.
+
+`AuthServiceImpl.verifyMfa(MfaVerifyRequestDto)`:
+1. `cacheService.getMfaChallengeUserId(mfaToken)` — resolves the Redis
+   mapping; if missing (expired or never issued),
+   `AuthenticationFailedException("Invalid or expired MFA challenge")`.
+2. `userRepository.findById(userId)` — loads the actual user.
+3. `otpService.verifyOtp(user.getPhone(), LOGIN_MFA, code)` — reuses §2's
+   mechanism exactly. On failure, an `MFA_FAILURE` audit row is written and
+   the request is rejected — note this does **not** increment the
+   login-lockout counter, only the OTP's own internal attempt counter; a
+   wrong MFA code doesn't lock the password.
+4. On success: `cacheService.deleteMfaChallenge(mfaToken)` (single-use), an
+   `MFA_SUCCESS` audit row is written, and `issueTokenResponse(user, null)`
+   runs — the **same** method every other successful login path calls.
+   `POST /mfa/verify {mfaToken, code}` is the endpoint wired to this.
 
 ---
 
@@ -220,18 +302,16 @@ human-readable listing and targeted revocation.**
   `last_used_at`. Access tokens live 15 minutes and refreshes happen
   continuously while a client is active; if every refresh created a new
   session row, "My active sessions" would fill up with dozens of rows per
-  device per day, making the feature useless. `AuthServiceImpl.refreshToken`
-  looks up the session by `(userId, oldTokenId)` before rotating and passes
-  it into `issueTokenResponse` so the row is updated in place, not duplicated.
+  device per day, making the feature useless.
 - `GET /sessions`, `DELETE /sessions/{id}` (revoke one), `DELETE /sessions`
   (revoke all — "log out everywhere") were added. Revoking a session both
   flags the Postgres row (`revoked=true`) **and** deletes the corresponding
   Redis refresh-token key, so a revoked session can't be used to refresh even
   though the JWT access token technically still has a few minutes left on it
   — this is the same access-token-revocation waiver already accepted by the
-  original SRS-driven design (§ the earlier 2026-06-23 doc), applied
+  original SRS-driven design (see the earlier 2026-06-23 doc), applied
   consistently here rather than re-litigated.
-- `revokeAllSessions` (and, by extension, password reset/change — see §6)
+- `revokeAllSessions` (and, by extension, password reset/change — §6)
   needed to delete *every* refresh token for a user from Redis in one call.
   `CacheService.deleteAllRefreshTokens` does this with a `KEYS
   refresh:{userId}:*` scan-and-delete. **Marked as a `ponytail:` shortcut**:
@@ -240,6 +320,80 @@ human-readable listing and targeted revocation.**
   token IDs (`SADD` on issue, `SMEMBERS`+`DEL` here) if the refresh-token
   keyspace ever grows large enough for `KEYS` to become a real latency
   concern.
+
+### How it works, mechanically
+
+**Token issuance — `issueTokenResponse(user, existingSession)`** — every
+successful auth path (password login, Google login, MFA-verify, refresh)
+converges here:
+1. `authorProfileRepository.findByUser_Id(user.getId())` — if present,
+   `roles = ["READER","AUTHOR"]` and `authorProfileId` is that profile's ID;
+   otherwise `roles = ["READER"]`. Roles are **computed once, here, and
+   baked into the JWT** — never re-derived per request by the resource
+   server.
+2. `issueAccessToken(...)` builds a `JwtClaimsSet` (`sub` = user ID, `iat` =
+   now, `exp` = now + `AuthProperties.accessTokenTtl()` [default 15m],
+   `roles` claim, optional `authorProfileId` claim) and signs it RS256 via
+   the app's in-memory RSA keypair (`JwtConfig`) through `NimbusJwtEncoder`.
+3. A new opaque `tokenId` (`UUID`) is generated.
+   `cacheService.storeRefreshToken(userId, tokenId, refreshTokenTtl)` writes
+   Redis key **`refresh:{userId}:{tokenId}` → `"1"`** with TTL from
+   `AuthProperties.refreshTokenTtl()` (default 30d). The refresh token handed
+   to the client is the string `"{userId}:{tokenId}"` — `userId` is a public
+   selector for the Redis key, `tokenId` is the unguessable secret half.
+4. `recordSession(user, tokenId, existingSession)`:
+   - if `existingSession` is `null` (a genuinely new login), a **new**
+     `UserSession` row is inserted (`refreshTokenId = tokenId`,
+     `ipAddress`/`userAgent`/`deviceLabel` from the request, `lastUsedAt =
+     now`, `revoked = false`).
+   - if `existingSession` is **not** `null` (this call came from a token
+     *refresh*), the **same row** is updated in place: `refreshTokenId`
+     becomes the new `tokenId`, `lastUsedAt = now`. **No new row is
+     inserted.**
+5. Returns the populated `AuthTokenResponseDto`.
+
+**Refresh — `AuthServiceImpl.refreshToken(...)`:**
+1. `parseRefreshToken(raw)` splits on the first `:`; malformed input throws
+   `AuthenticationFailedException`.
+2. `cacheService.existsRefreshToken(userId, tokenId)` — Redis `EXISTS` check;
+   false means already-used/expired/never-issued, reject.
+3. `cacheService.deleteRefreshToken(userId, tokenId)` — the **old** token is
+   invalidated **before** a new one is issued, which is what makes reuse of
+   an already-rotated refresh token fail regardless of whether the new one
+   was ever used.
+4. `userRepository.findById(userId)` — reject if the user is gone.
+5. `userSessionRepository.findByUser_IdAndRefreshTokenId(userId, tokenId)` —
+   locates the session row tied to *this specific* refresh token.
+6. A `TOKEN_REFRESH` audit row is written, then `issueTokenResponse(user,
+   session)` runs — the "update in place" path from step 4 above.
+
+**Logout — `AuthServiceImpl.logout(...)`:**
+1. Parses the refresh token the same way.
+2. `cacheService.deleteRefreshToken(userId, tokenId)` — gone from Redis, can
+   never refresh again.
+3. The matching `UserSession` row (if found) is marked `revoked = true`,
+   `revokedAt = now`.
+4. A `LOGOUT` audit row is written.
+
+Note what logout does **not** do: revoke the *current* access token — that
+JWT remains valid for up to 15 more minutes. Same explicitly-accepted
+trade-off as the original design, applied consistently.
+
+**Session listing/revocation:**
+- `listSessions(userId)` — `findByUser_IdAndRevokedFalseOrderByLastUsedAtDesc`,
+  mapped to `SessionResponseDto`. Because of the update-in-place behavior
+  above, this reflects genuinely distinct logins/devices, not a log of every
+  token refresh.
+- `revokeSession(userId, sessionId)` — loads the session, **verifies it
+  belongs to `userId`** (else `EntityNotFoundException` — a user can't revoke
+  someone else's session by guessing an ID), flags it revoked, and also
+  calls `cacheService.deleteRefreshToken(userId, session.getRefreshTokenId())`
+  so the Redis-side token dies at the same moment. A `SESSION_REVOKED` audit
+  row is written.
+- `revokeAllSessions(userId)` — flags every non-revoked session row for that
+  user, then `cacheService.deleteAllRefreshTokens(userId)` runs the Redis
+  `KEYS` scan-and-delete described above. An `ALL_SESSIONS_REVOKED` audit row
+  is written.
 
 ---
 
@@ -264,6 +418,26 @@ human-readable listing and targeted revocation.**
   still technically valid for its remaining ≤15 minutes — again, the
   documented access-token-revocation waiver, not an oversight.
 
+### How it works, mechanically
+
+- **`forgotPassword(phone)`**: `otpService.sendOtp(phone, PASSWORD_RESET)`
+  runs **only if** `userRepository.findByPhone(phone)` actually finds
+  someone — but the method returns identically either way, and a
+  `PASSWORD_RESET_REQUESTED` audit row is written regardless.
+- **`resetPassword(phone, code, newPassword)`**: loads the user by phone (if
+  absent, the same generic "invalid or expired verification code" message is
+  thrown as an actual bad code would produce — no information leakage);
+  `otpService.verifyOtp(phone, PASSWORD_RESET, code)` must succeed; the
+  password is re-hashed and saved; then `revokeAllSessionRows` +
+  `cacheService.deleteAllRefreshTokens` run (§5's revoke-all machinery).
+  `PASSWORD_RESET_COMPLETED` audit row written.
+- **`changePassword(userId, oldPassword, newPassword)`** (authenticated):
+  `requireUserWithPassword(userId, oldPassword)` re-verifies the *current*
+  password (not just trusting the caller's still-valid JWT) before allowing
+  the change — a stolen access token alone can't rotate the password without
+  also knowing the current one. On success, same revoke-everything step.
+  `PASSWORD_CHANGED` audit row written.
+
 ---
 
 ## 7. Security audit log
@@ -277,18 +451,27 @@ human-readable listing and targeted revocation.**
   enabled/disabled/challenge/success/failure, password-reset
   requested/completed, password-changed, session-revoked,
   all-sessions-revoked.
-- **The one correctness detail that would have silently broken this
-  feature:** `AuthServiceImpl` is `@Transactional` at the class level, and a
-  *failed* login (for example) throws `AuthenticationFailedException` **after**
-  the audit-log write. If the audit write shared the caller's transaction, the
-  exception would roll back the whole transaction — **including the audit log
-  entry it was trying to record**, which defeats the entire point of auditing
-  failures. `SecurityAuditServiceImpl.record(...)` is annotated
-  `@Transactional(propagation = Propagation.REQUIRES_NEW)` specifically so it
-  commits independently of whatever the caller's transaction eventually does.
 - `GET /security-log` (authenticated) exposes the caller's own most recent 50
-  events — self-service visibility, not an admin panel (no admin/other-users
-  view was in scope for this session).
+  events (`findTop50ByUser_IdOrderByCreatedAtDesc`) — self-service
+  visibility, not an admin panel (no admin/other-users view was in scope for
+  this session).
+
+### The one correctness detail that would have silently broken this feature
+
+`AuthServiceImpl` is `@Transactional` at the class level. A *failed* login,
+for instance, calls `registerFailedAttempt(...)` and writes a
+`LOGIN_FAILURE` audit row **before** throwing
+`AuthenticationFailedException`. If that audit write shared the same
+transaction as the rest of the method, the exception propagating out would
+roll back the whole transaction — **including the audit row that exists
+specifically to record the failure**, which would silently defeat the entire
+point of auditing failures.
+
+`SecurityAuditServiceImpl.record(...)` is annotated
+`@Transactional(propagation = Propagation.REQUIRES_NEW)` specifically to
+prevent this: it opens and commits its own, independent transaction, so the
+audit row survives regardless of what the calling method's transaction does
+afterward.
 
 ---
 
@@ -302,22 +485,34 @@ proved this exact pattern works; generalizing it to
 dependency (`StringRedisTemplate`) instead of adding a library for something
 a few lines already do.
 
-- `AuthRateLimitFilter` (a `OncePerRequestFilter`) only acts on requests
-  under `/api/v1/auth/**`; every other request passes straight through. It
-  buckets by `{remote IP}:{URI}` and returns HTTP 429 (RFC 7807 problem-detail
-  body) once `identity.auth.rate-limit-max-requests` is exceeded inside
-  `identity.auth.rate-limit-window` (defaults: 20 requests / 1 minute).
-- **A specific, non-obvious Spring Boot/Security gotcha had to be handled
-  correctly:** any `Filter` bean in the application context gets
-  auto-registered by Spring Boot as a *second*, unscoped servlet filter
-  (applied to `/*`) **in addition to** whatever the Spring Security filter
-  chain does with it. Wiring `AuthRateLimitFilter` into
-  `HttpSecurity.addFilterBefore(...)` without addressing this would have run
-  the rate-limit check **twice** per request. `SecurityConfig` explicitly
-  registers a `FilterRegistrationBean<AuthRateLimitFilter>` with
-  `setEnabled(false)` to suppress Boot's automatic registration, so the
-  filter runs exactly once, in the position chosen inside the security chain
-  (`addFilterBefore(rateLimitFilter, BasicAuthenticationFilter.class)`).
+### How it works, mechanically
+
+Per request, `AuthRateLimitFilter.doFilterInternal`:
+1. Checks `request.getRequestURI().startsWith(AUTH_BASE_PATH)` — anything
+   outside `/api/v1/auth/**` passes straight through with zero overhead.
+2. For matching requests, the bucket key is `{remoteAddr}:{URI}` — each
+   client IP gets its own independent counter *per route* (hammering
+   `/login` doesn't burn through the allowance for `/refresh`).
+3. `cacheService.incrementRateLimit(...)` returns the post-increment count.
+   If it exceeds `AuthProperties.rateLimitMaxRequests()` (default 20) inside
+   `AuthProperties.rateLimitWindow()` (default 1 minute), the filter writes
+   an HTTP 429 with an RFC 7807 problem-detail JSON body directly and
+   **does not call `filterChain.doFilter(...)`** — the request never reaches
+   Spring MVC at all.
+
+**A specific, non-obvious Spring Boot/Security gotcha had to be handled
+correctly:** any `Filter` bean present in the application context gets
+auto-registered by Spring Boot as a servlet filter applied to `/*`, via its
+own `FilterRegistrationBean` machinery — **separately from** whatever Spring
+Security's own filter chain does with that same bean. Simply adding
+`AuthRateLimitFilter` via `HttpSecurity.addFilterBefore(...)` (needed so it
+runs inside the security chain, before authentication is even attempted)
+would, without further action, have caused the filter to run **twice** per
+request. `SecurityConfig` explicitly declares a
+`FilterRegistrationBean<AuthRateLimitFilter>` with `.setEnabled(false)` to
+suppress Boot's automatic registration, so the *only* place the filter
+actually runs is the position chosen inside the security chain
+(`addFilterBefore(rateLimitFilter, BasicAuthenticationFilter.class)`).
 
 ---
 
@@ -335,18 +530,19 @@ a few lines already do.
   (login/refresh/logout/signup/verify-otp). It is **no longer correct** now
   that account-management endpoints (`mfa/enable`, `mfa/disable`,
   `password/change`, `sessions`, `security-log`) also live under that same
-  prefix and genuinely require a valid JWT. The new config explicitly
-  `permitAll`s only the pre-auth set (signup, verify-otp, login, refresh,
-  logout, social/google, mfa/verify, password/forgot, password/reset); every
-  other route — including the rest of `/api/v1/auth/**` — falls through to
-  `anyRequest().authenticated()`.
-- Two controllers now exist under the same base path:
-  `AuthController` (the pre-auth handshake: login, social login, MFA verify,
-  refresh, logout) and the new `AccountSecurityController` (everything that
-  assumes an already-authenticated principal: MFA toggles, password
-  change, sessions, security log). This mirrors how the endpoints are
-  actually gated in `SecurityConfig` and keeps neither controller sprawling
-  past what it's responsible for.
+  prefix and genuinely require a valid JWT — a caller shouldn't be able to
+  list or revoke someone else's sessions just by knowing the URL. The new
+  config explicitly `permitAll`s only the pre-auth set (signup, verify-otp,
+  login, refresh, logout, social/google, mfa/verify, password/forgot,
+  password/reset); every other route — including the rest of
+  `/api/v1/auth/**` — falls through to `anyRequest().authenticated()`.
+- Two controllers now exist under the same base path: `AuthController` (the
+  pre-auth handshake: login, social login, MFA verify, refresh, logout) and
+  the new `AccountSecurityController` (everything that assumes an
+  already-authenticated principal: MFA toggles, password change, sessions,
+  security log). This mirrors how the endpoints are actually gated in
+  `SecurityConfig` — the controller boundary matches the authorization
+  boundary, rather than being an arbitrary split.
 
 ---
 
@@ -447,6 +643,9 @@ are new in this session.
   file**. All remaining errors are the pre-existing, unrelated
   `AuthorRequest`/`UserRole`/catalog-entity gaps described in §1, confirmed
   present *before* this session's changes and left untouched.
+- `./gradlew compileTestJava` fails only because it depends on
+  `compileJava`, which fails on the same pre-existing unrelated files — the
+  new/rewritten test file itself was confirmed to introduce zero new errors.
 - Docker was **not running** in this environment (`docker ps` fails — no
   daemon socket), so Postgres/Redis aren't available and the integration
   test suite could not actually be executed this session. The tests were
@@ -479,3 +678,26 @@ are new in this session.
 
 None of the above are oversights; each is flagged at the point in the code
 where it would need to change, with what the upgrade path is.
+
+---
+
+## 14. Commit history for this build
+
+Fourteen commits, `70cf39d..f6f81bf`, each scoped to one concern (no
+`Co-Authored-By` trailer per instruction for this session), pushed to
+`origin/feature/jwt-login-logout`:
+
+1. `build:` google-api-client dependency + application.properties config
+2. `feat(identity):` V2 migration — schema for social login/sessions/audit
+3. `feat(identity):` entity/enum/repository model changes
+4. `feat(identity):` CacheService extensions (OTP/MFA/rate-limit/bulk-revoke)
+5. `feat(identity):` real OtpService replacing the hardcoded stub
+6. `feat(identity):` Google ID-token verification service
+7. `feat(identity):` security audit log service
+8. `feat(identity):` Redis-backed rate limiting
+9. `feat(identity):` request/response DTOs
+10. `feat(identity):` AuthService contract + AuthServiceImpl core logic
+11. `feat(identity):` controllers + route constants + SecurityConfig
+12. `refactor(identity):` IdentityController route-constant cleanup
+13. `test(identity):` MFA/session/password/Google test coverage
+14. `docs:` this log
