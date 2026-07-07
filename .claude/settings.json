@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/tanvir/IdeaProjects/mvp-pristha-backend/**)",
+      "Edit(//home/tanvir/IdeaProjects/mvp-pristha-backend/**)",
+      "Write(//home/tanvir/IdeaProjects/mvp-pristha-backend/**)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(find *)",
+      "Bash(ls)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(pwd)"
+    ]
+  }
+}
