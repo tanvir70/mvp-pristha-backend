@@ -1,0 +1,187 @@
+
+<h2 class="sr-only">Pristha Digital backend capabilities — filterable feature list across 10 domains</h2>
+<style>
+.pill{display:inline-block;font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;cursor:pointer;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);background:transparent;transition:background .15s,color .15s;font-family:var(--font-sans)}
+.pill.on{background:var(--color-background-secondary);color:var(--color-text-primary);border-color:var(--color-border-primary)}
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px;margin-top:14px}
+.feat-card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px 16px}
+.cat-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+.cat-label{font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px}
+.feat-item{padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary);cursor:pointer}
+.feat-item:last-child{border-bottom:none}
+.feat-title{font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0 0 2px}
+.feat-desc{font-size:12px;color:var(--color-text-secondary);margin:0;line-height:1.5}
+</style>
+
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px" id="pills"></div>
+<div class="feat-grid" id="grid"></div>
+
+<script>
+var CATS = [
+  {id:'auth',     label:'Auth & identity',   bg:'#EEEDFE', tc:'#3C3489', dot:'#534AB7'},
+  {id:'api',      label:'API design',         bg:'#E1F5EE', tc:'#085041', dot:'#0F6E56'},
+  {id:'data',     label:'Data & storage',     bg:'#FAEEDA', tc:'#633806', dot:'#854F0B'},
+  {id:'security', label:'Security',           bg:'#FCEBEB', tc:'#791F1F', dot:'#A32D2D'},
+  {id:'perf',     label:'Performance',        bg:'#E6F1FB', tc:'#0C447C', dot:'#185FA5'},
+  {id:'realtime', label:'Real-time',          bg:'#FBEAF0', tc:'#72243E', dot:'#993556'},
+  {id:'ai',       label:'AI features',        bg:'#EAF3DE', tc:'#27500A', dot:'#3B6D11'},
+  {id:'infra',    label:'Infrastructure',     bg:'#F1EFE8', tc:'#444441', dot:'#5F5E5A'},
+  {id:'payments', label:'Payments',           bg:'#FAECE7', tc:'#712B13', dot:'#993C1D'},
+  {id:'obs',      label:'Observability',      bg:'#E6F1FB', tc:'#042C53', dot:'#185FA5'},
+];
+
+var FEATURES = [
+  {cat:'auth', title:'OAuth2 + OIDC social login', desc:'Google, Facebook sign-in via Spring Security 7 OIDC client'},
+  {cat:'auth', title:'JWT stateless sessions', desc:'Signed RS256 tokens, short-lived access + rotating refresh tokens'},
+  {cat:'auth', title:'Role-based access control', desc:'AUTHOR / READER / PUBLISHER / ADMIN with method-level @PreAuthorize'},
+  {cat:'auth', title:'Multi-tenant identity', desc:'TenantContext propagated via virtual-thread-local from gateway'},
+  {cat:'auth', title:'Phone OTP (BD)', desc:'bKash-linked phone OTP as primary auth method for BD users'},
+  {cat:'auth', title:'Device fingerprinting', desc:'Bind reading sessions to device hash to prevent token sharing'},
+  {cat:'auth', title:'Account takeover alerts', desc:'New-device login triggers email + SMS alert, session freeze'},
+
+  {cat:'api', title:'RESTful resource API', desc:'Spring MVC, versioned via URL prefix /api/v1/'},
+  {cat:'api', title:'GraphQL gateway', desc:'Spring for GraphQL for flexible author analytics queries'},
+  {cat:'api', title:'OpenAPI 3.1 docs', desc:'springdoc-openapi auto-generates Swagger UI per module'},
+  {cat:'api', title:'Idempotency keys', desc:'POST /payments accepts Idempotency-Key header, deduped in Redis'},
+  {cat:'api', title:'Cursor-based pagination', desc:'Stable page tokens for book lists, safer than offset under load'},
+  {cat:'api', title:'Bulk endpoints', desc:'POST /books/bulk-upload for publisher catalog ingestion'},
+  {cat:'api', title:'API versioning + sunset', desc:'URI versioning with deprecation headers and sunset date headers'},
+
+  {cat:'data', title:'PostgreSQL 17 primary', desc:'Row Level Security enforces tenant isolation at database layer'},
+  {cat:'data', title:'Read replicas', desc:'Routing reads via Spring AbstractRoutingDataSource'},
+  {cat:'data', title:'Redis 8 cache', desc:'Book metadata, reading sessions, rate-limit counters'},
+  {cat:'data', title:'MinIO object store', desc:'AES-256 encrypted PDF storage, presigned fragment delivery'},
+  {cat:'data', title:'Elasticsearch 9', desc:'Bangla-aware full-text index, autocomplete, trending book scores'},
+  {cat:'data', title:'Flyway migrations', desc:'Versioned SQL migrations, tenant schema bootstrap on signup'},
+  {cat:'data', title:'Event sourcing (audit)', desc:'Immutable event log for payment and licensing state changes'},
+  {cat:'data', title:'pgvector embeddings', desc:'Vector similarity for semantic book recommendations'},
+
+  {cat:'security', title:'DRM session tokens', desc:'Time-boxed, device-bound JWTs for reading sessions — 2h TTL'},
+  {cat:'security', title:'Dynamic watermarking', desc:'iText injects phone + email as SVG overlay server-side per page'},
+  {cat:'security', title:'Rate limiting', desc:'Bucket4j + Redis — per-user, per-IP, per-endpoint throttling'},
+  {cat:'security', title:'Input sanitisation', desc:'Hibernate Validator + OWASP Java HTML Sanitizer on all UGC'},
+  {cat:'security', title:'CORS + CSRF config', desc:'Strict origin allowlist, SameSite=Strict on all auth cookies'},
+  {cat:'security', title:'Secret management', desc:'HashiCorp Vault — zero plaintext secrets in code or env vars'},
+  {cat:'security', title:'Dependency scanning', desc:'OWASP Dependency-Check in CI, fail build on CVSS >= 7'},
+  {cat:'security', title:'Content piracy detection', desc:'Perceptual hash of covers to catch re-uploaded pirated books'},
+
+  {cat:'perf', title:'Virtual threads (Loom)', desc:'Java 25 VT for all I/O — no reactive complexity, high throughput'},
+  {cat:'perf', title:'Cache-aside strategy', desc:'Read-through cache for book metadata, write-invalidate on edit'},
+  {cat:'perf', title:'Lazy PDF fragment loading', desc:'Pages fetched one-by-one on demand — no full PDF in memory'},
+  {cat:'perf', title:'HTTP/2 + HikariCP', desc:'Nginx H2 termination, connection pool tuned for VT concurrency'},
+  {cat:'perf', title:'CDN-level caching', desc:'Cloudflare caches covers, avatars, and all public book pages'},
+  {cat:'perf', title:'Query analysis', desc:'pg_stat_statements + slow query log wired into observability stack'},
+  {cat:'perf', title:'GraalVM native (roadmap)', desc:'AOT compilation for faster cold start on lightweight modules'},
+
+  {cat:'realtime', title:'WebSocket notifications', desc:'STOMP over WebSocket via Spring WebSocket for in-app alerts'},
+  {cat:'realtime', title:'Server-sent events', desc:'Reading progress sync and live sales dashboard updates'},
+  {cat:'realtime', title:'Kafka event streaming', desc:'book.purchased, chapter.published, scout.threshold.crossed topics'},
+  {cat:'realtime', title:'Fan-out notifications', desc:'Chapter published fans out to all followers via Kafka consumer'},
+  {cat:'realtime', title:'Webhook delivery', desc:'Publisher webhooks on new sales, retry with exponential backoff'},
+  {cat:'realtime', title:'Live co-reading (roadmap)', desc:'Shared session with cursor sync via WebSocket rooms'},
+
+  {cat:'ai', title:'Book recommendations', desc:'Claude API — personalised picks from reader history embeddings'},
+  {cat:'ai', title:'Bangla grammar assistant', desc:'In-editor suggestions via Claude API inside Author Studio'},
+  {cat:'ai', title:'Content moderation', desc:'AI pre-screening of uploaded content before human review queue'},
+  {cat:'ai', title:'Scouting score engine', desc:'ML-ranked trending books for publisher scouting dashboard'},
+  {cat:'ai', title:'Auto-generated summaries', desc:'Claude generates blurb + chapter summaries for book detail page'},
+  {cat:'ai', title:'Semantic book search', desc:'pgvector embeddings for "find books like this" similarity search'},
+  {cat:'ai', title:'Fraud signal detection', desc:'Anomaly detection on payment patterns — flags suspicious accounts'},
+  {cat:'ai', title:'Chapter drop-off analysis', desc:'Predicts where readers stop — surfaced in author analytics'},
+
+  {cat:'infra', title:'Spring Modulith', desc:'9 bounded modules, Kafka-decoupled — splittable to microservices later'},
+  {cat:'infra', title:'Docker + Compose', desc:'Full local dev stack in one compose file, parity with production'},
+  {cat:'infra', title:'Kubernetes + Helm', desc:'HPA on CPU/RPS, PodDisruptionBudgets, rolling deploys'},
+  {cat:'infra', title:'CI/CD via GitHub Actions', desc:'Build → test → OWASP scan → Docker push → Helm deploy pipeline'},
+  {cat:'infra', title:'Feature flags (Unleash)', desc:'Roll out DRM v2 to 5% of readers before full release'},
+  {cat:'infra', title:'Scheduled jobs', desc:'Spring Scheduler for royalty payouts, analytics rollups, cleanup'},
+  {cat:'infra', title:'Background job queue', desc:'Spring Batch for bulk catalog import and report generation'},
+
+  {cat:'payments', title:'SSLCommerz gateway', desc:'bKash, Nagad, Rocket, card, internet banking — all local MFS'},
+  {cat:'payments', title:'Idempotent ledger', desc:'Every attempt logged before external call — no double charges'},
+  {cat:'payments', title:'Author revenue split', desc:'Auto commission deduction, author credit on payment.completed'},
+  {cat:'payments', title:'Subscription billing', desc:'Monthly cycle for Publisher SaaS tiers and Reader Reading Pass'},
+  {cat:'payments', title:'Refund workflow', desc:'Partial refund for chapter disputes with full audit trail'},
+  {cat:'payments', title:'VAT calculation', desc:'Bangladesh VAT engine, invoice PDF generation per transaction'},
+  {cat:'payments', title:'Reconciliation job', desc:'Daily cron reconciles SSLCommerz ledger vs internal records'},
+
+  {cat:'obs', title:'Structured logging (JSON)', desc:'Logback to Loki, correlated by traceId + tenantId per request'},
+  {cat:'obs', title:'Distributed tracing', desc:'Micrometer + Tempo — full trace across Kafka, DB, MinIO calls'},
+  {cat:'obs', title:'Metrics + alerting', desc:'Micrometer + Prometheus + Grafana dashboards + PagerDuty alerts'},
+  {cat:'obs', title:'Health check endpoints', desc:'/actuator/health with liveness + readiness probes for K8s'},
+  {cat:'obs', title:'Error tracking (Sentry)', desc:'Exception grouping, release tracking, user context per error'},
+  {cat:'obs', title:'SLO tracking', desc:'p99 latency and error-rate SLOs per module, burnt budget alerts'},
+  {cat:'obs', title:'Audit log API', desc:'Queryable log of all sensitive actions — payment, DRM, role change'},
+];
+
+var current = 'all';
+
+function getCat(id) {
+  for (var i = 0; i < CATS.length; i++) { if (CATS[i].id === id) return CATS[i]; }
+  return null;
+}
+
+function render() {
+  var grouped = {};
+  for (var i = 0; i < FEATURES.length; i++) {
+    var f = FEATURES[i];
+    if (current === 'all' || f.cat === current) {
+      if (!grouped[f.cat]) grouped[f.cat] = [];
+      grouped[f.cat].push(f);
+    }
+  }
+  var grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  var keys = Object.keys(grouped);
+  for (var k = 0; k < keys.length; k++) {
+    var cat = keys[k];
+    var items = grouped[cat];
+    var c = getCat(cat);
+    if (!c) continue;
+    var card = document.createElement('div');
+    card.className = 'feat-card';
+    var header = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+      + '<span class="cat-dot" style="background:' + c.dot + '"></span>'
+      + '<span class="cat-label" style="background:' + c.bg + ';color:' + c.tc + '">' + c.label + '</span>'
+      + '</div>';
+    var rows = '';
+    for (var j = 0; j < items.length; j++) {
+      var f = items[j];
+      var q = 'Deep dive on Pristha backend: ' + f.title + ' — implementation detail, code pattern, and how it fits the Spring Boot 4 Java 25 stack';
+      rows += '<div class="feat-item" onclick="sendPrompt(' + JSON.stringify(q) + ')">'
+        + '<p class="feat-title">' + f.title + '</p>'
+        + '<p class="feat-desc">' + f.desc + '</p>'
+        + '</div>';
+    }
+    card.innerHTML = header + rows;
+    grid.appendChild(card);
+  }
+}
+
+function filter(cat, btn) {
+  current = cat;
+  var pills = document.querySelectorAll('.pill');
+  for (var i = 0; i < pills.length; i++) pills[i].classList.remove('on');
+  btn.classList.add('on');
+  render();
+}
+
+var pillsEl = document.getElementById('pills');
+var allBtn = document.createElement('button');
+allBtn.className = 'pill on';
+allBtn.textContent = 'All';
+allBtn.onclick = function() { filter('all', allBtn); };
+pillsEl.appendChild(allBtn);
+
+for (var i = 0; i < CATS.length; i++) {
+  (function(c) {
+    var btn = document.createElement('button');
+    btn.className = 'pill';
+    btn.textContent = c.label;
+    btn.onclick = function() { filter(c.id, btn); };
+    pillsEl.appendChild(btn);
+  })(CATS[i]);
+}
+
+render();
+</script>
