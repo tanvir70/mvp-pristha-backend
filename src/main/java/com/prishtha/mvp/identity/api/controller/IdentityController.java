@@ -4,6 +4,7 @@ import com.prishtha.mvp.identity.api.contract.IdentityService;
 import com.prishtha.mvp.identity.api.dto.request.UserSignUpRequestDto;
 import com.prishtha.mvp.identity.api.dto.response.UserBasicInfoResponseDto;
 import com.prishtha.mvp.identity.internal.util.constant.IdentityRouteConstant;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +18,7 @@ public class IdentityController {
     private final IdentityService identityService;
 
     @PostMapping(IdentityRouteConstant.SIGN_UP)
-    public ResponseEntity<UserBasicInfoResponseDto> signUp(@RequestBody UserSignUpRequestDto requestDto) {
+    public ResponseEntity<UserBasicInfoResponseDto> signUp(@Valid @RequestBody UserSignUpRequestDto requestDto) {
         UserBasicInfoResponseDto response = identityService.signUp(requestDto);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }

@@ -160,6 +160,8 @@ class AuthServiceImpl implements AuthService {
         cacheService.deleteRefreshToken(refreshTokenId.userId(), refreshTokenId.tokenId());
 
         User user = userRepository.findById(refreshTokenId.userId())
+                // suspended/unverified users must not keep minting access tokens
+                .filter(u -> u.getStatus() == UserStatus.ACTIVE)
                 .orElseThrow(() -> new AuthenticationFailedException(INVALID_REFRESH_TOKEN_MESSAGE));
 
         UserSession session = userSessionRepository

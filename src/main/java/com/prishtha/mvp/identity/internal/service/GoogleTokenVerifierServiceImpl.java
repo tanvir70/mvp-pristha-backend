@@ -29,6 +29,11 @@ class GoogleTokenVerifierServiceImpl implements GoogleTokenVerifierService {
         }
 
         GoogleIdToken.Payload payload = token.getPayload();
+        // Login links accounts by email (AuthServiceImpl.loginWithGoogle), so an
+        // unverified email would let an attacker claim someone else's account.
+        if (!Boolean.TRUE.equals(payload.getEmailVerified())) {
+            throw new AuthenticationFailedException(INVALID_GOOGLE_TOKEN_MESSAGE);
+        }
         return new GoogleUserInfo(
                 payload.getSubject(),
                 payload.getEmail(),
