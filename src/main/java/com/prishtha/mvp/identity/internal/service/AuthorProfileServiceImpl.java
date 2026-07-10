@@ -5,10 +5,7 @@ import com.prishtha.mvp.identity.api.dto.request.AuthorProfileUpdateRequestDto;
 import com.prishtha.mvp.identity.api.dto.response.AuthorProfileResponseDto;
 import com.prishtha.mvp.identity.api.dto.response.PublicAuthorProfileResponseDto;
 import com.prishtha.mvp.identity.internal.entity.AuthorProfile;
-import com.prishtha.mvp.identity.internal.entity.User;
-import com.prishtha.mvp.identity.internal.entity.UserRole;
 import com.prishtha.mvp.identity.internal.repository.AuthorProfileRepository;
-import com.prishtha.mvp.identity.internal.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,14 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 class AuthorProfileServiceImpl implements AuthorProfileService {
 
     private final AuthorProfileRepository authorProfileRepository;
-    private final UserRepository userRepository;
 
     @Override
     @Transactional(readOnly = true)
     public AuthorProfileResponseDto getMyAuthorProfile(Long requesterUserId) {
-        User requester = userRepository.findById(requesterUserId)
-                .orElseThrow(() -> new IllegalArgumentException("Requester user not found"));
-        ensureAuthor(requester);
+        ensureAuthor(requesterUserId);
 
         AuthorProfile authorProfile = authorProfileRepository.findByUser_Id(requesterUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Author profile not found"));
@@ -36,9 +30,7 @@ class AuthorProfileServiceImpl implements AuthorProfileService {
     @Override
     public AuthorProfileResponseDto updateMyAuthorProfile(
             Long requesterUserId, AuthorProfileUpdateRequestDto requestDto) {
-        User requester = userRepository.findById(requesterUserId)
-                .orElseThrow(() -> new IllegalArgumentException("Requester user not found"));
-        ensureAuthor(requester);
+        ensureAuthor(requesterUserId);
 
         AuthorProfile authorProfile = authorProfileRepository.findByUser_Id(requesterUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Author profile not found"));
@@ -57,8 +49,11 @@ class AuthorProfileServiceImpl implements AuthorProfileService {
         if (requestDto.getBiography() != null) {
             authorProfile.setBiography(requestDto.getBiography());
         }
-        if (requestDto.getPayoutPhone() != null) {
-            authorProfile.setPayoutPhone(requestDto.getPayoutPhone());
+        if (requestDto.getPayoutMfsNumber() != null) {
+            authorProfile.setPayoutMfsNumber(requestDto.getPayoutMfsNumber());
+        }
+        if (requestDto.getPayoutMfsProvider() != null) {
+            authorProfile.setPayoutMfsProvider(requestDto.getPayoutMfsProvider());
         }
 
         return toAuthorProfileDto(authorProfileRepository.save(authorProfile));
@@ -98,8 +93,8 @@ class AuthorProfileServiceImpl implements AuthorProfileService {
         }
     }
 
-    private void ensureAuthor(User user) {
-        if (user.getRole() != UserRole.AUTHOR) {
+    private void ensureAuthor(Long userId) {
+        if (!authorProfileRepository.existsByUser_Id(userId)) {
             throw new IllegalArgumentException("Only authors can perform this action");
         }
     }
@@ -110,7 +105,8 @@ class AuthorProfileServiceImpl implements AuthorProfileService {
                 .userId(authorProfile.getUser().getId())
                 .penName(authorProfile.getPenName())
                 .biography(authorProfile.getBiography())
-                .payoutPhone(authorProfile.getPayoutPhone())
+                .payoutMfsNumber(authorProfile.getPayoutMfsNumber())
+                .payoutMfsProvider(authorProfile.getPayoutMfsProvider())
                 .active(authorProfile.isActive())
                 .build();
     }

@@ -35,4 +35,7 @@ public class AuthorProfile extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "payout_mfs_provider", nullable = false, length = 20)
     private MfsProvider payoutMfsProvider;
+
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
 }

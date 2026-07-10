@@ -3,9 +3,8 @@ package com.prishtha.mvp.catalog.internal.service;
 import com.prishtha.mvp.catalog.api.contract.CatalogService;
 import com.prishtha.mvp.catalog.api.dto.response.PostDetailResponseDto;
 import com.prishtha.mvp.catalog.api.dto.response.PostSummaryResponseDto;
-import com.prishtha.mvp.catalog.internal.entity.Post;
-import com.prishtha.mvp.catalog.internal.entity.PostStatus;
-import com.prishtha.mvp.catalog.internal.repository.PostRepository;
+import com.prishtha.mvp.catalog.internal.entity.PublishedWriting;
+import com.prishtha.mvp.catalog.internal.repository.PublishedWritingRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -17,60 +16,63 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 class CatalogServiceImpl implements CatalogService {
 
-    private final PostRepository postRepository;
+    private final PublishedWritingRepository publishedWritingRepository;
 
     @Override
     public Page<PostSummaryResponseDto> getPublishedPosts(String query, String tagSlug, Pageable pageable) {
-        Page<Post> posts;
+        Page<PublishedWriting> writings;
         if (tagSlug != null && !tagSlug.isBlank()) {
-            posts = postRepository.findPublishedPostsByTagSlug(PostStatus.PUBLISHED, tagSlug.trim(), pageable);
+            writings = publishedWritingRepository.findByTag(tagSlug.trim(), pageable);
         } else if (query == null || query.isBlank()) {
-            posts = postRepository.findByStatusAndDeletedAtIsNullOrderByPublishedAtDesc(
-                    PostStatus.PUBLISHED, pageable);
+            writings = publishedWritingRepository.findAllByOrderByPublishedAtDesc(pageable);
         } else {
-            posts = postRepository.searchPublishedPosts(PostStatus.PUBLISHED, query.trim(), pageable);
+            writings = publishedWritingRepository.search(query.trim(), pageable);
         }
-        return posts.map(this::toSummaryDto);
+        return writings.map(this::toSummaryDto);
     }
 
     @Override
+    @Transactional
     public PostDetailResponseDto getPublishedPostBySlug(String slug) {
-        Post post = postRepository.findBySlugAndStatusAndDeletedAtIsNull(slug, PostStatus.PUBLISHED)
+        PublishedWriting writing = publishedWritingRepository.findBySlug(slug)
                 .orElseThrow(() -> new IllegalArgumentException("Published post not found"));
-        return toDetailDto(post);
+        publishedWritingRepository.incrementViewCount(writing.getId());
+        return toDetailDto(writing);
     }
 
-    private PostSummaryResponseDto toSummaryDto(Post post) {
+    private PostSummaryResponseDto toSummaryDto(PublishedWriting writing) {
         return PostSummaryResponseDto.builder()
-                .id(post.getId())
-                .slug(post.getSlug())
-                .title(post.getTitle())
-                .excerpt(post.getExcerpt())
-                .coverImageUrl(post.getCoverImageUrl())
-                .pricingType(post.getPricingType())
-                .priceAmount(post.getPriceAmount())
-                .authorId(post.getAuthorId())
-                .publishedAt(post.getPublishedAt())
-                .viewCount(post.getViewCount())
-                .likeCount(post.getLikeCount())
-                .commentCount(post.getCommentCount())
+                .id(writing.getId())
+                .slug(writing.getSlug())
+                .title(writing.getTitle())
+                .synopsis(writing.getSynopsis())
+                .coverImageUrl(writing.getCoverImageUrl())
+                .priceType(writing.getPriceType())
+                .priceAmount(writing.getPriceAmount())
+                .authorId(writing.getAuthorId())
+                .authorPenName(writing.getAuthorPenName())
+                .publishedAt(writing.getPublishedAt())
+                .viewCount(writing.getViewCount())
+                .likeCount(writing.getLikeCount())
+                .commentCount(writing.getCommentCount())
                 .build();
     }
 
-    private PostDetailResponseDto toDetailDto(Post post) {
+    private PostDetailResponseDto toDetailDto(PublishedWriting writing) {
         return PostDetailResponseDto.builder()
-                .id(post.getId())
-                .slug(post.getSlug())
-                .title(post.getTitle())
-                .excerpt(post.getExcerpt())
-                .coverImageUrl(post.getCoverImageUrl())
-                .pricingType(post.getPricingType())
-                .priceAmount(post.getPriceAmount())
-                .authorId(post.getAuthorId())
-                .publishedAt(post.getPublishedAt())
-                .viewCount(post.getViewCount())
-                .likeCount(post.getLikeCount())
-                .commentCount(post.getCommentCount())
+                .id(writing.getId())
+                .slug(writing.getSlug())
+                .title(writing.getTitle())
+                .synopsis(writing.getSynopsis())
+                .coverImageUrl(writing.getCoverImageUrl())
+                .priceType(writing.getPriceType())
+                .priceAmount(writing.getPriceAmount())
+                .authorId(writing.getAuthorId())
+                .authorPenName(writing.getAuthorPenName())
+                .publishedAt(writing.getPublishedAt())
+                .viewCount(writing.getViewCount())
+                .likeCount(writing.getLikeCount())
+                .commentCount(writing.getCommentCount())
                 .build();
     }
 }

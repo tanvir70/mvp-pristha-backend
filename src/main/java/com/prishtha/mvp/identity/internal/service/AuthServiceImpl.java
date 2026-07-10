@@ -37,7 +37,10 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @RequiredArgsConstructor
@@ -61,6 +64,7 @@ class AuthServiceImpl implements AuthService {
     private final GoogleTokenVerifierService googleTokenVerifierService;
     private final SecurityAuditService securityAuditService;
     private final HttpServletRequest httpServletRequest;
+    private final PlatformTransactionManager transactionManager;
 
     @Override
     public AuthTokenResponseDto login(LoginRequestDto requestDto) {
@@ -92,22 +96,30 @@ class AuthServiceImpl implements AuthService {
     public AuthTokenResponseDto loginWithGoogle(SocialLoginRequestDto requestDto) {
         GoogleUserInfo googleUserInfo = googleTokenVerifierService.verify(requestDto.getIdToken());
 
-        User user = userRepository.findByGoogleSub(googleUserInfo.subject())
-                .or(() -> userRepository.findByEmail(googleUserInfo.email())
-                        .map(existing -> {
-                            existing.setGoogleSub(googleUserInfo.subject());
-                            return existing;
-                        }))
-                .orElseGet(() -> {
-                    User created = new User();
-                    created.setEmail(googleUserInfo.email());
-                    created.setFullName(googleUserInfo.fullName());
-                    created.setAvatarUrl(googleUserInfo.pictureUrl());
-                    created.setGoogleSub(googleUserInfo.subject());
-                    created.setStatus(UserStatus.ACTIVE);
-                    return created;
-                });
-        user = userRepository.save(user);
+        // Committed in its own REQUIRES_NEW transaction: securityAuditService.record()
+        // below also runs REQUIRES_NEW, and a suspended-but-uncommitted outer
+        // transaction is invisible to it — a first-time Google sign-in would
+        // otherwise fail the audit-log insert's user_id foreign key.
+        TransactionTemplate requiresNew = new TransactionTemplate(transactionManager);
+        requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        User user = requiresNew.execute(status -> {
+            User resolved = userRepository.findByGoogleSub(googleUserInfo.subject())
+                    .or(() -> userRepository.findByEmail(googleUserInfo.email())
+                            .map(existing -> {
+                                existing.setGoogleSub(googleUserInfo.subject());
+                                return existing;
+                            }))
+                    .orElseGet(() -> {
+                        User created = new User();
+                        created.setEmail(googleUserInfo.email());
+                        created.setFullName(googleUserInfo.fullName());
+                        created.setAvatarUrl(googleUserInfo.pictureUrl());
+                        created.setGoogleSub(googleUserInfo.subject());
+                        created.setStatus(UserStatus.ACTIVE);
+                        return created;
+                    });
+            return userRepository.save(resolved);
+        });
 
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new AuthenticationFailedException("Account is not active");

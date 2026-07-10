@@ -41,6 +41,12 @@ public class Writing extends BaseEntity {
     @Column(name = "slug", length = 280)
     private String slug;
 
+    @Column(name = "synopsis", columnDefinition = "TEXT")
+    private String synopsis;
+
+    @Column(name = "cover_image_url", length = 512)
+    private String coverImageUrl;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "body_json", columnDefinition = "jsonb")
     private String bodyJson;

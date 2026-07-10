@@ -70,6 +70,9 @@ public class PublishedWriting {
     @Column(name = "comment_count", nullable = false)
     private long commentCount = 0;
 
+    @Column(name = "view_count", nullable = false)
+    private long viewCount = 0;
+
     @Column(name = "published_at", nullable = false)
     private Instant publishedAt;
 }

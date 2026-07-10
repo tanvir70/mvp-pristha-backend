@@ -17,26 +17,27 @@ import com.prishtha.mvp.identity.api.dto.request.SocialLoginRequestDto;
 import com.prishtha.mvp.identity.api.dto.request.UserSignUpRequestDto;
 import com.prishtha.mvp.identity.api.dto.response.AuthTokenResponseDto;
 import com.prishtha.mvp.identity.api.dto.response.SessionResponseDto;
+import com.prishtha.mvp.identity.internal.repository.SecurityAuditLogRepository;
+import com.prishtha.mvp.identity.internal.repository.UserRepository;
+import com.prishtha.mvp.identity.internal.repository.UserSessionRepository;
 import com.prishtha.mvp.shared.exception.AuthenticationFailedException;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
-// Package matches internal.service (not api) so tests can reach the
-// package-private OtpDeliveryService/GoogleTokenVerifierService collaborators
-// to capture/stub what would otherwise leave the module (an SMS/Google call).
+// No class-level @Transactional: AuthServiceImpl writes security-audit-log
+// rows in a REQUIRES_NEW transaction, which can't see rows created by an
+// outer transaction that a test-rollback would otherwise never commit.
+// Created users are cleaned up explicitly in tearDown() instead.
 @SpringBootTest
-@Import(AuthServiceIntegrationTests.CapturingOtpDeliveryConfig.class)
-@Transactional
+@Import(CapturingOtpDeliveryTestSupport.class)
 class AuthServiceIntegrationTests {
 
     @Autowired
@@ -48,21 +49,50 @@ class AuthServiceIntegrationTests {
     @Autowired
     private OtpDeliveryService otpDeliveryService;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private UserSessionRepository userSessionRepository;
+
+    @Autowired
+    private SecurityAuditLogRepository securityAuditLogRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     @MockitoBean
     private GoogleTokenVerifierService googleTokenVerifierService;
 
+    private final List<Long> createdUserIds = new ArrayList<>();
+
+    // Plain @Transactional on an @AfterEach method isn't wrapped by Spring's
+    // test transaction support (that only applies to @Test methods), so this
+    // runs the cleanup in its own, genuinely committing transaction.
+    @AfterEach
+    void tearDown() {
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            for (Long userId : createdUserIds) {
+                securityAuditLogRepository.deleteByUser_Id(userId);
+                userSessionRepository.deleteByUser_Id(userId);
+                userRepository.deleteById(userId);
+            }
+        });
+    }
+
     private String signUpAndActivate(String phone) {
-        identityService.signUp(UserSignUpRequestDto.builder()
+        Long userId = identityService.signUp(UserSignUpRequestDto.builder()
                 .phone(phone)
                 .fullName("Test User")
                 .password("password123")
-                .build());
+                .build()).getId();
+        createdUserIds.add(userId);
         identityService.verifyOtp(phone, lastOtpFor(phone));
         return phone;
     }
 
     private String lastOtpFor(String phone) {
-        return ((CapturingOtpDeliveryService) otpDeliveryService).lastCode(phone);
+        return ((CapturingOtpDeliveryTestSupport.CapturingOtpDeliveryService) otpDeliveryService).lastCode(phone);
     }
 
     @Test
@@ -196,30 +226,9 @@ class AuthServiceIntegrationTests {
 
         AuthTokenResponseDto response = authService.loginWithGoogle(
                 SocialLoginRequestDto.builder().idToken("valid-google-token").build());
+        createdUserIds.add(response.getUserId());
 
         assertThat(response.getAccessToken()).isNotBlank();
         assertThat(response.getRoles()).containsExactly("READER");
-    }
-
-    @TestConfiguration
-    static class CapturingOtpDeliveryConfig {
-        @Bean
-        @Primary
-        OtpDeliveryService capturingOtpDeliveryService() {
-            return new CapturingOtpDeliveryService();
-        }
-    }
-
-    static class CapturingOtpDeliveryService implements OtpDeliveryService {
-        private final Map<String, String> lastCodeByPhone = new ConcurrentHashMap<>();
-
-        @Override
-        public void send(String phone, String code) {
-            lastCodeByPhone.put(phone, code);
-        }
-
-        String lastCode(String phone) {
-            return lastCodeByPhone.get(phone);
-        }
     }
 }

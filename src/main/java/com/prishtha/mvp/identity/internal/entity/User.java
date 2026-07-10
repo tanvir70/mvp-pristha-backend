@@ -43,4 +43,7 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private UserStatus status = UserStatus.PENDING_VERIFICATION;
+
+    @Column(name = "is_admin", nullable = false)
+    private boolean admin = false;
 }

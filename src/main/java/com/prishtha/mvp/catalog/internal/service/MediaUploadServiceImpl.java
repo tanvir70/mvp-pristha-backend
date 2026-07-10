@@ -3,8 +3,8 @@ package com.prishtha.mvp.catalog.internal.service;
 import com.prishtha.mvp.catalog.api.contract.MediaUploadService;
 import com.prishtha.mvp.catalog.api.dto.response.MediaUploadResponseDto;
 import com.prishtha.mvp.catalog.internal.config.MediaStorageProperties;
-import com.prishtha.mvp.catalog.internal.entity.PostMedia;
-import com.prishtha.mvp.catalog.internal.repository.PostMediaRepository;
+import com.prishtha.mvp.catalog.internal.entity.WritingMedia;
+import com.prishtha.mvp.catalog.internal.repository.WritingMediaRepository;
 import com.prishtha.mvp.identity.api.contract.AuthorProfileService;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -25,7 +25,7 @@ class MediaUploadServiceImpl implements MediaUploadService {
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
             "image/jpeg", "image/png", "image/webp");
 
-    private final PostMediaRepository postMediaRepository;
+    private final WritingMediaRepository writingMediaRepository;
     private final MediaStorageProperties mediaStorageProperties;
     private final AuthorProfileService authorProfileService;
 
@@ -56,13 +56,13 @@ class MediaUploadServiceImpl implements MediaUploadService {
             throw new IllegalStateException("Failed to store uploaded file", ex);
         }
 
-        PostMedia postMedia = new PostMedia();
-        postMedia.setAuthorId(authorProfileId);
-        postMedia.setStorageKey(storageKey);
-        postMedia.setMimeType(mimeType);
-        postMedia.setFileSizeBytes((int) file.getSize());
+        WritingMedia writingMedia = new WritingMedia();
+        writingMedia.setAuthorId(authorProfileId);
+        writingMedia.setStorageKey(storageKey);
+        writingMedia.setMimeType(mimeType);
+        writingMedia.setFileSizeBytes((int) file.getSize());
 
-        PostMedia saved = postMediaRepository.save(postMedia);
+        WritingMedia saved = writingMediaRepository.save(writingMedia);
         String url = "/uploads/" + storageKey;
 
         return MediaUploadResponseDto.builder()

@@ -1,0 +1,1 @@
+ALTER TABLE identity.author_profiles ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE;

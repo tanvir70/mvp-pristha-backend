@@ -1,6 +1,5 @@
 package com.prishtha.mvp.catalog.api.dto.response;
 
-import com.prishtha.mvp.catalog.internal.entity.PricingType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import lombok.Builder;
@@ -10,12 +9,13 @@ public record PostSummaryResponseDto(
         Long id,
         String slug,
         String title,
-        String excerpt,
+        String synopsis,
         String coverImageUrl,
-        PricingType pricingType,
+        String priceType,
         BigDecimal priceAmount,
         Long authorId,
+        String authorPenName,
         Instant publishedAt,
         long viewCount,
-        int likeCount,
-        int commentCount) {}
+        long likeCount,
+        long commentCount) {}

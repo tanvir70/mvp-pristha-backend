@@ -9,4 +9,6 @@ public interface PublishedWritingTagRepository extends JpaRepository<PublishedWr
     List<PublishedWritingTag> findByIdWritingId(Long writingId);
 
     List<PublishedWritingTag> findByIdTag(String tag);
+
+    void deleteByIdWritingId(Long writingId);
 }

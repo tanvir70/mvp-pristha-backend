@@ -9,4 +9,6 @@ public interface WritingCategoryRepository extends JpaRepository<WritingCategory
     List<WritingCategory> findByIdWritingId(Long writingId);
 
     List<WritingCategory> findByIdCategoryId(Long categoryId);
+
+    void deleteByIdWritingId(Long writingId);
 }

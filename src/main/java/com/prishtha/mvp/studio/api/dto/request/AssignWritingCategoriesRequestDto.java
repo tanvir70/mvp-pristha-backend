@@ -1,4 +1,4 @@
-package com.prishtha.mvp.catalog.api.dto.request;
+package com.prishtha.mvp.studio.api.dto.request;
 
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -10,6 +10,6 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AssignPostTagsRequestDto {
-    private List<String> tagSlugs;
+public class AssignWritingCategoriesRequestDto {
+    private List<String> categoryNames;
 }

@@ -1,5 +1,6 @@
 package com.prishtha.mvp.identity.api.dto.response;
 
+import com.prishtha.mvp.identity.internal.enums.MfsProvider;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,6 +15,7 @@ public class AuthorProfileResponseDto {
     private Long userId;
     private String penName;
     private String biography;
-    private String payoutPhone;
+    private String payoutMfsNumber;
+    private MfsProvider payoutMfsProvider;
     private boolean active;
 }

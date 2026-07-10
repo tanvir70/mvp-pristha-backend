@@ -4,7 +4,6 @@ import com.prishtha.mvp.identity.api.contract.AdminAuthorService;
 import com.prishtha.mvp.identity.api.dto.response.AuthorProfileResponseDto;
 import com.prishtha.mvp.identity.internal.entity.AuthorProfile;
 import com.prishtha.mvp.identity.internal.entity.User;
-import com.prishtha.mvp.identity.internal.entity.UserRole;
 import com.prishtha.mvp.identity.internal.repository.AuthorProfileRepository;
 import com.prishtha.mvp.identity.internal.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -43,7 +42,7 @@ class AdminAuthorServiceImpl implements AdminAuthorService {
     private void ensureAdmin(Long adminUserId) {
         User admin = userRepository.findById(adminUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Admin user not found"));
-        if (admin.getRole() != UserRole.ADMIN) {
+        if (!admin.isAdmin()) {
             throw new IllegalArgumentException("Only admins can perform this action");
         }
     }
@@ -54,7 +53,8 @@ class AdminAuthorServiceImpl implements AdminAuthorService {
                 .userId(authorProfile.getUser().getId())
                 .penName(authorProfile.getPenName())
                 .biography(authorProfile.getBiography())
-                .payoutPhone(authorProfile.getPayoutPhone())
+                .payoutMfsNumber(authorProfile.getPayoutMfsNumber())
+                .payoutMfsProvider(authorProfile.getPayoutMfsProvider())
                 .active(authorProfile.isActive())
                 .build();
     }
